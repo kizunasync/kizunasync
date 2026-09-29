@@ -1,0 +1,43 @@
+# UniFFI 0.31.2 + ubrn 0.31.0-6. Do not bump the crate to 0.32.
+# Package name is @kizunasync/rn-uniffi so ubrn does not emit Expo.mm.
+---
+rust:
+  directory: ../..
+  manifestPath: crates/kizunasync-ffi/Cargo.toml
+
+bindings:
+  cpp: src/generated/cpp
+  ts: src/generated/ts
+
+turboModule:
+  cpp: src/generated/cpp
+  ts: src/generated
+  spec: NativeRnUniffi
+  entrypoint: src/generated/index.ts
+
+android:
+  directory: android
+  cargoExtras:
+    - --features
+    - http
+  targets:
+    - arm64-v8a
+    - armeabi-v7a
+    - x86_64
+  useSharedLibrary: true
+
+ios:
+  directory: ios
+  cargoExtras:
+    - --features
+    - http
+  targets:
+    - aarch64-apple-ios
+    - aarch64-apple-ios-sim
+  frameworkName: build/KizunaSyncFfi
+
+noOverwrite:
+  - "*.podspec"
+  - android/build.gradle
+  - android/CMakeLists.txt
+  - android/src/main/AndroidManifest.xml

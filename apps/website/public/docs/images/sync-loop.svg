@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" width="1440" height="810" fill="none" role="img" aria-labelledby="ttl dsc">
+  <title id="ttl">Write locally. Push. Pull. Reads and writes hit local SQLite; the outbox pushes, the server answers with a verdict, and a fenced pull moves the checkpoint.</title>
+  <desc id="dsc">Sarah's phone shows a todo list read from local SQLite, an empty outbox, and a checkpoint at seq 41. Your Supabase project, on the right, lists kizunasync.push, kizunasync.pull, and the todos table under RLS. Sarah adds the todo "works on a plane". The row appears in her list at once, and an insert slip drops into the outbox, whose count goes from 0 to 1. The slip rides the wire to kizunasync.push, the todos RLS row checks the write, and a chip reading "applied" rides back, so the outbox count returns to 0. A pull chip carrying 2 changes follows it: David renamed "Buy milk" to "Buy oat milk", the list shows the new title, and the checkpoint moves from seq 41 to seq 43. The list then returns to rest and the loop starts again.</desc>
+  <style>.s{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+  <defs>
+    <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="10"/></filter>
+    <mask id="sb">
+      <rect width="1440" height="810" fill="white"/>
+      <rect x="900" y="286" width="450" height="364" rx="14" fill="black"/>
+    </mask>
+    <mask id="cards">
+      <rect width="1440" height="810" fill="white"/>
+      <rect x="90" y="186" width="470" height="540" rx="14" fill="black"/>
+      <rect x="900" y="286" width="450" height="364" rx="14" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="1440" height="810" rx="16" fill="#15141f"/>
+
+  <!-- ===== GRID ===== -->
+  <g fill="#1d1c29" opacity="0.45">
+    <rect x="-60" y="-40" width="176" height="64" rx="10"/><rect x="144" y="-40" width="176" height="64" rx="10"/><rect x="1164" y="-40" width="176" height="64" rx="10"/><rect x="1368" y="-40" width="176" height="64" rx="10"/>
+    <rect x="-162" y="52" width="176" height="64" rx="10"/>
+    <rect x="-60" y="144" width="176" height="64" rx="10"/><rect x="144" y="144" width="176" height="64" rx="10"/><rect x="1164" y="144" width="176" height="64" rx="10"/><rect x="1368" y="144" width="176" height="64" rx="10"/>
+    <rect x="-162" y="236" width="176" height="64" rx="10"/><rect x="42" y="236" width="176" height="64" rx="10"/><rect x="246" y="236" width="176" height="64" rx="10"/><rect x="450" y="236" width="176" height="64" rx="10"/><rect x="654" y="236" width="176" height="64" rx="10"/><rect x="858" y="236" width="176" height="64" rx="10"/><rect x="1062" y="236" width="176" height="64" rx="10"/><rect x="1266" y="236" width="176" height="64" rx="10"/>
+    <rect x="-60" y="328" width="176" height="64" rx="10"/><rect x="144" y="328" width="176" height="64" rx="10"/><rect x="348" y="328" width="176" height="64" rx="10"/><rect x="552" y="328" width="176" height="64" rx="10"/><rect x="756" y="328" width="176" height="64" rx="10"/><rect x="960" y="328" width="176" height="64" rx="10"/><rect x="1164" y="328" width="176" height="64" rx="10"/><rect x="1368" y="328" width="176" height="64" rx="10"/>
+    <rect x="-162" y="420" width="176" height="64" rx="10"/><rect x="42" y="420" width="176" height="64" rx="10"/><rect x="246" y="420" width="176" height="64" rx="10"/><rect x="450" y="420" width="176" height="64" rx="10"/><rect x="654" y="420" width="176" height="64" rx="10"/><rect x="858" y="420" width="176" height="64" rx="10"/><rect x="1062" y="420" width="176" height="64" rx="10"/><rect x="1266" y="420" width="176" height="64" rx="10"/>
+    <rect x="-60" y="512" width="176" height="64" rx="10"/><rect x="144" y="512" width="176" height="64" rx="10"/><rect x="348" y="512" width="176" height="64" rx="10"/><rect x="552" y="512" width="176" height="64" rx="10"/><rect x="756" y="512" width="176" height="64" rx="10"/><rect x="960" y="512" width="176" height="64" rx="10"/><rect x="1164" y="512" width="176" height="64" rx="10"/><rect x="1368" y="512" width="176" height="64" rx="10"/>
+    <rect x="-162" y="604" width="176" height="64" rx="10"/><rect x="42" y="604" width="176" height="64" rx="10"/><rect x="246" y="604" width="176" height="64" rx="10"/><rect x="450" y="604" width="176" height="64" rx="10"/><rect x="654" y="604" width="176" height="64" rx="10"/><rect x="858" y="604" width="176" height="64" rx="10"/><rect x="1062" y="604" width="176" height="64" rx="10"/><rect x="1266" y="604" width="176" height="64" rx="10"/>
+    <rect x="-60" y="696" width="176" height="64" rx="10"/><rect x="144" y="696" width="176" height="64" rx="10"/><rect x="348" y="696" width="176" height="64" rx="10"/><rect x="552" y="696" width="176" height="64" rx="10"/><rect x="756" y="696" width="176" height="64" rx="10"/><rect x="960" y="696" width="176" height="64" rx="10"/><rect x="1164" y="696" width="176" height="64" rx="10"/><rect x="1368" y="696" width="176" height="64" rx="10"/>
+    <rect x="-162" y="788" width="176" height="64" rx="10"/><rect x="42" y="788" width="176" height="64" rx="10"/><rect x="246" y="788" width="176" height="64" rx="10"/><rect x="450" y="788" width="176" height="64" rx="10"/><rect x="654" y="788" width="176" height="64" rx="10"/><rect x="858" y="788" width="176" height="64" rx="10"/><rect x="1062" y="788" width="176" height="64" rx="10"/><rect x="1266" y="788" width="176" height="64" rx="10"/>
+  </g>
+
+  <!-- ===== HEADLINE ===== -->
+  <text x="720" y="80" text-anchor="middle" class="s" font-size="46" font-weight="700" fill="#ecebf0">Write locally. <tspan fill="#e5484d">Push.</tspan> Pull.</text>
+  <text x="720" y="124" text-anchor="middle" class="s" font-size="21" fill="#a7a4b2">Reads and writes hit local SQLite; the outbox pushes, the server answers with a verdict, and a fenced pull moves the checkpoint.</text>
+
+  <!-- ===== SARAH'S PHONE ===== -->
+  <rect x="90" y="186" width="470" height="540" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="457" y="174" width="90" height="24" fill="#15141f"/>
+  <text x="502" y="192" text-anchor="middle" class="m" font-size="18" letter-spacing="1.5" fill="#a7a4b2">ONLINE</text>
+  <rect x="122" y="208" width="30" height="50" rx="5" stroke="#a7a4b2" stroke-width="2"/>
+  <rect x="130" y="214" width="14" height="2" rx="1" fill="#a7a4b2"/>
+  <text x="172" y="242" class="s" font-size="24" font-weight="700" fill="#ecebf0">Sarah's phone</text>
+  <rect x="114" y="278" width="422" height="240" rx="10" fill="#1d1c29"/>
+  <rect x="114" y="534" width="422" height="100" rx="10" fill="#1d1c29"/>
+  <rect x="114" y="650" width="422" height="52" rx="10" fill="#1d1c29"/>
+  <text x="136" y="311" class="m" font-size="20" fill="#a7a4b2">todos</text>
+  <rect x="324" y="291" width="196" height="32" rx="8" fill="#26252f"/>
+  <path d="M338 300 v13 a8 3 0 0 0 16 0 v-13" stroke="#a7a4b2" stroke-width="1.5"/><ellipse cx="346" cy="300" rx="8" ry="3" stroke="#a7a4b2" stroke-width="1.5"/>
+  <text x="364" y="313" class="m" font-size="20" fill="#a7a4b2">local SQLite</text>
+  <rect x="324" y="291" width="196" height="32" rx="8" stroke="#ecebf0" stroke-opacity="0.6" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.07143;0.08214;0.09286;0.12857;0.62857;0.63929;0.65;0.68571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <path d="M114 334 H536" stroke="#26252f" stroke-width="1.5"/>
+  <g>
+    <rect x="124" y="338" width="402" height="40" rx="8" fill="#26252f" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.62857;0.64286;0.67143;0.71429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+    <rect x="136" y="348" width="20" height="20" rx="5" stroke="#a7a4b2" stroke-width="1.5"/>
+    <text x="172" y="365" class="s" font-size="20" fill="#ecebf0">Buy milk<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.62857;0.65;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+    <text x="172" y="365" class="s" font-size="20" fill="#ecebf0" opacity="0">Buy oat milk<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.62857;0.65;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+    <text x="514" y="365" text-anchor="end" class="s" font-size="20" fill="#a7a4b2" opacity="0">David<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.63571;0.65714;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+    <rect x="136" y="392" width="20" height="20" rx="5" stroke="#a7a4b2" stroke-width="1.5"/><text x="172" y="409" class="s" font-size="20" fill="#ecebf0">Walk the dog</text>
+    <rect x="136" y="436" width="20" height="20" rx="5" stroke="#a7a4b2" stroke-width="1.5"/><text x="172" y="453" class="s" font-size="20" fill="#ecebf0">Ship the demo</text>
+    <g opacity="0">
+      <rect x="124" y="470" width="402" height="40" rx="8" fill="#e5484d" fill-opacity="0.08" stroke="#e5484d" stroke-width="1.5"><animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.45714;0.48929;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+      <rect x="136" y="480" width="20" height="20" rx="5" stroke="#a7a4b2" stroke-width="1.5"/><text x="172" y="497" class="s" font-size="20" fill="#ecebf0">works on a plane</text>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.07143;0.08929;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+    <text x="292" y="683" class="m" font-size="20" fill="#ecebf0">seq 41<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.62857;0.65;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+    <text x="292" y="683" class="m" font-size="20" fill="#ecebf0" opacity="0">seq 43<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.62857;0.65;0.92857;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+    <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.9;0.92857;0.94286;0.97143;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+  </g>
+  <text x="136" y="566" class="m" font-size="20" fill="#a7a4b2">outbox</text>
+  <rect x="220" y="548" width="32" height="26" rx="13" fill="#26252f"/>
+  <text x="236" y="568" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">0<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.11071;0.12143;0.46071;0.47143;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+  <text x="236" y="568" text-anchor="middle" class="m" font-size="20" fill="#ecebf0" opacity="0">1<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.11071;0.12143;0.46071;0.47143;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+  <rect x="134" y="584" width="196" height="36" rx="8" stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <rect x="134" y="584" width="196" height="36" rx="8" stroke="#e5484d" stroke-opacity="0.7" stroke-width="1.5" stroke-dasharray="4 6" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.18571;0.2;0.45714;0.47143;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <text x="136" y="683" class="m" font-size="20" fill="#a7a4b2">checkpoint ·</text>
+  <rect x="114" y="650" width="422" height="52" rx="10" stroke="#a7a4b2" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.62857;0.64286;0.66429;0.70714;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+
+  <!-- ===== YOUR SUPABASE PROJECT ===== -->
+  <rect x="900" y="286" width="450" height="364" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <g transform="translate(-590 -77)">
+    <path d="M1522 407 v46 a22 8 0 0 0 44 0 v-46" fill="none" stroke="#3ECF8E" stroke-width="2"/>
+    <ellipse cx="1544" cy="407" rx="22" ry="8" fill="none" stroke="#3ECF8E" stroke-width="2"/>
+    <g transform="translate(1586 413) scale(1.41667)" fill="#3ECF8E"><path d="M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C-.33 13.427.65 15.455 2.409 15.455h9.579l.113 7.51c.014.985 1.259 1.408 1.873.636l9.262-11.653c1.093-1.375.113-3.403-1.645-3.403h-9.642z"/></g>
+    <text x="1628" y="437" class="s" font-size="24" font-weight="700" fill="#ecebf0">Supabase</text>
+  </g>
+  <text x="932" y="416" class="s" font-size="20" fill="#a7a4b2">Your Supabase project</text>
+  <rect x="924" y="452" width="402" height="44" rx="8" fill="#26252f"/>
+  <text x="946" y="481" class="m" font-size="20" fill="#ecebf0">kizunasync.push</text>
+  <rect x="924" y="512" width="402" height="44" rx="8" fill="#26252f"/>
+  <text x="946" y="541" class="m" font-size="20" fill="#ecebf0">kizunasync.pull</text>
+  <rect x="924" y="572" width="402" height="44" rx="8" fill="#26252f"/>
+  <text x="946" y="601" class="m" font-size="20" fill="#ecebf0">todos · RLS</text>
+  <rect x="924" y="452" width="402" height="44" rx="8" stroke="#e5484d" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.29286;0.30714;0.31429;0.35;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="924" y="572" width="402" height="44" rx="8" fill="#e5484d" fill-opacity="0.16" stroke="#e5484d" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.31429;0.32857;0.34286;0.37857;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="924" y="512" width="402" height="44" rx="8" stroke="#a7a4b2" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.49286;0.50714;0.52143;0.55714;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+
+  <!-- ===== WIRES ===== -->
+  <g stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6">
+    <path d="M570 602 C700 602 750 474 880 474"/>
+    <path d="M890 534 C760 534 710 676 580 676"/>
+  </g>
+  <g fill="#a7a4b2" fill-opacity="0.35"><polygon points="880,469 892,474 880,479"/><polygon points="580,671 568,676 580,681"/></g>
+
+  <!-- ===== ANIMATION ===== -->
+  <g mask="url(#sb)">
+    <g opacity="0">
+      <g transform="translate(-98 -18)"><rect width="196" height="36" rx="8" stroke="#e5484d" stroke-width="3" filter="url(#glow)" opacity="0.6"/><rect width="196" height="36" rx="8" fill="#1d1c29" stroke="#e5484d" stroke-opacity="1" stroke-width="1.5"/><text x="98" y="25" text-anchor="middle" class="m" font-size="20" fill="#e5484d">insert · todos</text></g>
+      <animateMotion path="M232 578 L232 602 L570 602 C700 602 750 474 880 474 L1000 474" keyPoints="0;0;0.0291;0.0291;1;1" keyTimes="0;0.08571;0.11786;0.18571;0.31429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.08571;0.10357;0.31786;0.325;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+  </g>
+  <g mask="url(#cards)">
+    <g opacity="0">
+      <g transform="translate(-68 -18)"><rect width="136" height="36" rx="8" fill="#1d1c29" stroke="#3ECF8E" stroke-opacity="0.8" stroke-width="1.5"/><text x="68" y="25" text-anchor="middle" class="m" font-size="20" fill="#3ECF8E">applied ✓</text></g>
+      <animateMotion path="M1000 534 L890 534 C760 534 710 676 580 676 L470 676" keyPoints="0;0;1;1" keyTimes="0;0.35357;0.46071;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.35357;0.36071;0.46429;0.47143;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-110 -18)"><rect width="220" height="36" rx="8" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/><text x="110" y="25" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">pull · 2 changes</text></g>
+      <animateMotion path="M1020 534 L890 534 C760 534 710 676 580 676 L440 676" keyPoints="0;0;0.5025;0.5025;1;1" keyTimes="0;0.51429;0.55714;0.58571;0.63571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.51429;0.52143;0.63929;0.64643;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+  </g>
+</svg>

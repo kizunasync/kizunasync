@@ -1,0 +1,278 @@
+{
+  "case": "push/005-atomic-batch-revert",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "atomic batch = all-or-nothing (P:verdict-completeness-transforms-and-conflict-rejection; D-atomic-batch-abort decided, JSON:API / AIP-233 shape): the one-verdict-per-mutation bijection (I-5) holds IFF the batch succeeds",
+      "the batch inserts a NEW row e2 (would stamp seq 3) then updates e1 under a precondition; device-b claimed e1 first (seq 2, unseen by this client) so the precondition mismatches and the update is the offender",
+      "on the first rejection the batch reverts entirely: the e2 insert is undone too, and the response is a SINGLE batch outcome naming the offender (offender_mutation_id, outcome aborted, reason, server_row): NO per-member verdicts",
+      "the whole batch is resolved-by-revert so the outbox empties and the next pull may advance the checkpoint; the typed BATCH_ABORTED event surfaces the loss (DX-class); the follow-up pull returns only e1 at seq 2, proving e2 was never committed server-side"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "2"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "claimed by device-b"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "row": null,
+      "table": "todos"
+    }
+  ],
+  "priority": "P1",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000001",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "unclaimed"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "unclaimed"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "title": "claimed by device-b"
+      },
+      "kind": "server",
+      "n": 4,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "second task"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000001",
+      "n": 5,
+      "op": "insert",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "table": "todos"
+    },
+    {
+      "columns": {
+        "title": "claimed by device-a"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000002",
+      "n": 6,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 7,
+      "request": {
+        "batch": {
+          "atomic": true,
+          "mutations": [
+            {
+              "columns": {
+                "done": false,
+                "owner_id": "00000000-0000-4000-8000-a10000000001",
+                "title": "second task"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000001",
+              "op": "insert",
+              "pk": "00000000-0000-4000-8000-e10000000002",
+              "table": "todos"
+            },
+            {
+              "columns": {
+                "title": "claimed by device-a"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000002",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "precondition": {
+                "title": "unclaimed"
+              },
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "batch": {
+          "offender_mutation_id": "00000000-0000-4000-8000-f10000000002",
+          "outcome": "aborted",
+          "reason": "PRECONDITION",
+          "server_row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "claimed by device-b"
+          }
+        }
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        },
+        {
+          "check": "event",
+          "event": "BATCH_ABORTED"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "claimed by device-b"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 8
+    },
+    {
+      "kind": "rpc",
+      "n": 9,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "claimed by device-b"
+            },
+            "seq": "2",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        }
+      ],
+      "kind": "assert",
+      "n": 10
+    }
+  ],
+  "title": "atomic batch revert: all-or-nothing, single batch outcome names the offender (JSON:API shape)"
+}

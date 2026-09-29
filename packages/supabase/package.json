@@ -1,0 +1,50 @@
+{
+  "name": "@kizunasync/supabase",
+  "version": "0.2.6-alpha.1",
+  "description": "Supabase client integration for Kizuna: the fenced `kizunasync.pull`/`push` RPC remote (createRpcRemote), the Supabase Storage transfer adapter (createSupabaseTransfer), and the Realtime doorbell wakeup (createRealtimeWakeup).",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kizunasync/kizunasync.git",
+    "directory": "packages/supabase"
+  },
+  "homepage": "https://kizunasync.com/docs/reference/javascript/introduction",
+  "keywords": ["supabase", "offline-first", "local-first", "sync", "sqlite"],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun ../../scripts/build-package.ts",
+    "test": "bun test",
+    "type-check": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@kizunasync/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2.0.0"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "typescript": "~7.0.2"
+  }
+}

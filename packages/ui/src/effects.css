@@ -1,0 +1,9 @@
+:root {
+  --color-site-gradient-top: #1c1a2a;
+  --color-site-online-pulse-strong: rgba(70, 167, 88, 0.5);
+  --color-site-online-pulse-fade: rgba(70, 167, 88, 0);
+  --color-site-raised-edge: rgba(255, 255, 255, 0.03);
+  --color-site-shimmer-highlight: rgba(255, 255, 255, 0.06);
+  --color-site-card-shadow: rgba(0, 0, 0, 0.7);
+  --color-site-hover-shadow: rgba(0, 0, 0, 0.65);
+}

@@ -1,0 +1,231 @@
+{
+  "case": "conflict/001-different-columns-merge",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "P:session-guarantees-and-exactly-once-effect",
+    "P:mutations-and-column-masked-conflict-resolution"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the protocol applies column-masked LWW (P:verdict-completeness-transforms-and-conflict-rejection): the mutation's column key set IS the mask (P:mutations-and-column-masked-conflict-resolution), so concurrent writes to DIFFERENT columns of the same row merge",
+      "arrival order at the single arbiter: device-b's done flag lands as seq 2 before this client's push; the title mask applies after it as seq 3, so both columns survive in the merged latest state (P:session-guarantees-and-exactly-once-effect convergence: column-LWW on server order)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": true,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "device-a title"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "original title"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "original title"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "columns": {
+        "title": "device-a title"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000009",
+      "n": 4,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": true
+      },
+      "kind": "server",
+      "n": 5,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "title": "device-a title"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000009",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000009",
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    },
+    {
+      "kind": "rpc",
+      "n": 8,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": true,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "device-a title"
+            },
+            "seq": "3",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": true,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "device-a title"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 9
+    }
+  ],
+  "title": "concurrent writes to different columns merge under column-masked lww"
+}

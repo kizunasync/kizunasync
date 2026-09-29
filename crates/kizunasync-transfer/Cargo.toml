@@ -1,0 +1,27 @@
+[package]
+name = "kizunasync-transfer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Attachment transfer: single-shot and TUS resumable (Supabase default)"
+publish = false
+
+[features]
+# In-memory `FakeTransfer`, for a downstream crate's own tests.
+test-support = []
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+kizunasync-transfer = { path = ".", features = ["test-support"] }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

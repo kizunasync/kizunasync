@@ -1,0 +1,73 @@
+# Kizuna Sync: website deployment.
+#
+# Builds apps/website with the Vercel CLI against the production settings of
+# the website's Vercel project, then uploads the prebuilt output from the
+# checkout with .git set aside, so Vercel attaches no commit author; the Vercel
+# project is not connected to git. Runs as a step of release.yml's tag
+# pipeline, or on manual dispatch. The website build consumes no generated
+# workspace artifact, so the job installs no Rust or wasm toolchain.
+
+name: deploy-website
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-website
+  cancel-in-progress: false
+
+env:
+  # Pin the toolchain to the repo's packageManager (bun@1.4.2, package.json),
+  # same as ci.yml.
+  BUN_VERSION: 1.4.2
+
+jobs:
+  deploy-website:
+    name: deploy-website
+    runs-on: ubuntu-24.04
+    environment:
+      name: website
+      url: https://kizunasync.com
+    steps:
+      # apps/website/next.config.ts dates the site from `git log`, which needs the full history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Pull the production project settings
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bunx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build the website
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: NODE_ENV=production bunx vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        # Vercel refuses a deployment whose commit author is not a team member, so the CLI must see no git metadata; the prebuilt functions name checkout files by path and must stay inside the uploaded folder, so the deploy runs from the checkout with .git set aside.
+        run: |
+          set -euo pipefail
+          mv .git "$RUNNER_TEMP/website-git"
+          trap 'mv "$RUNNER_TEMP/website-git" .git' EXIT
+          bunx vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"

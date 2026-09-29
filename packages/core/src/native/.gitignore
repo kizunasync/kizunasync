@@ -1,0 +1,4 @@
+# Built cdylibs (copied by scripts/copy-napi-prebuild.ts), never committed
+*
+!.gitignore
+!README.md

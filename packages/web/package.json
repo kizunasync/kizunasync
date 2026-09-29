@@ -1,0 +1,41 @@
+{
+  "name": "@kizunasync/web",
+  "version": "0.2.6-alpha.1",
+  "license": "Apache-2.0",
+  "description": "Kizuna web driver: the Rust sync engine (kizunasync-wasm) in a dedicated worker over OPFS, with an IndexedDB fallback; no SharedArrayBuffer, COOP or COEP required.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kizunasync/kizunasync.git",
+    "directory": "packages/web"
+  },
+  "homepage": "https://kizunasync.com/docs/reference/javascript/installing",
+  "keywords": ["supabase", "offline-first", "local-first", "sync", "sqlite"],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./wasm/kizunasync_wasm_bg.wasm": "./src/wasm/kizunasync_wasm_bg.wasm"
+  },
+  "files": ["src", "!src/**/*.test.ts", "README.md"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "test:browser": "playwright test --project=conformance",
+    "test:browser:demo": "KSYNC_DEMO_LANE=1 playwright test --project=demo",
+    "type-check": "tsc -p tsconfig.json && tsc -p conformance/tsconfig.json"
+  },
+  "dependencies": {
+    "@kizunasync/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@kizunasync/protocol": "workspace:*",
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.1"
+  }
+}

@@ -1,0 +1,12 @@
+Classify pending migrations as additive vs breaking
+
+Usage: kizunasync lint [OPTIONS]
+
+Options:
+      --db-url <URL>          Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+  -v, --version               Print the version and exit
+      --no-color              Never emit ANSI colour (also honoured: NO_COLOR)
+      --project-ref <REF>     Drive the Supabase Management API against this project instead
+      --access-token <TOKEN>  Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+      --workdir <PATH>        Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+  -h, --help                  Print help

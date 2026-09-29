@@ -1,0 +1,158 @@
+{
+  "case": "wakeup/001-missed-wakeup-poll-converges",
+  "cites": [
+    "P:wake-up-and-poll-fallback",
+    "A:wake-up-and-realtime-a-hint-never-a-source-of-truth"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the realtime broadcast wake-up for the step-2 change is never delivered: wake-ups are at-most-once with no redelivery and never a source of truth (P:wake-up-and-poll-fallback, A:wake-up-and-realtime-a-hint-never-a-source-of-truth)",
+      "no wake-up bytes appear in this transcript: channel naming and payload are unfixed (D-wakeup-channel, blocked: wakeup/002 is manifest-only); correctness comes from pull, so the missed signal only adds latency until the jittered poll fallback at step 4 (P:wake-up-and-poll-fallback)",
+      "the step-2 change takes seq '1' (Decimal seq and cursor token: seqs dense from '1' per transcript)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "1"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "created while the wake-up was lost"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P2",
+  "status": "normative",
+  "steps": [
+    {
+      "kind": "rpc",
+      "n": 1,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "0",
+        "has_more": false,
+        "rows": [],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "created while the wake-up was lost"
+      },
+      "kind": "server",
+      "n": 2,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "0"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "created while the wake-up was lost"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "created while the wake-up was lost"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    }
+  ],
+  "title": "missed wake-up: a later poll pull converges"
+}

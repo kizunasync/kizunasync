@@ -1,0 +1,128 @@
+{
+  "$id": "https://schemas.kizunasync.dev/pull-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "kizunaCites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+  ],
+  "kizunaNote": "The pull response carries changed rows, tombstones, a new cursor, and typed signals (P:cursor-monotonicity-rebase-and-atomic-checkpoints). D-conflict-journal-visibility makes conflicts optional, omitted when empty; C-2 fixes the key order when present: conflicts, cursor, has_more, rows, signal, tombstones.",
+  "kizunaStatus": "proposed",
+  "properties": {
+    "conflicts": {
+      "items": {
+        "additionalProperties": false,
+        "kizunaCites": [
+          "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+          "P:session-guarantees-and-exactly-once-effect"
+        ],
+        "kizunaNote": "Selected D-conflict-journal-visibility shape for one overwritten column. winner_seq is the changelog seq of the winning write, always one of the seqs in the delivered page; pk must already be present in rows.",
+        "kizunaStatus": "decided",
+        "properties": {
+          "column_name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "type": "string"
+          },
+          "conflict_mode": {
+            "enum": [
+              "arrival",
+              "hlc"
+            ],
+            "type": "string"
+          },
+          "loser_value": {},
+          "pk": {
+            "$ref": "common.schema.json#/$defs/uuid"
+          },
+          "table": {
+            "$ref": "common.schema.json#/$defs/table_name"
+          },
+          "winner_mutation_id": {
+            "$ref": "common.schema.json#/$defs/uuid"
+          },
+          "winner_seq": {
+            "$ref": "common.schema.json#/$defs/seq",
+            "kizunaCites": [
+              "P:session-guarantees-and-exactly-once-effect",
+              "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+            ],
+            "kizunaNote": "The changelog seq of the write that won the column, which is what the item is joined by (D-conflict-journal-visibility). Same decimal-string seq the delivered rows[] entry carries, so a consumer matches them without a cast.",
+            "kizunaStatus": "decided"
+          }
+        },
+        "required": [
+          "column_name",
+          "conflict_mode",
+          "loser_value",
+          "pk",
+          "table",
+          "winner_mutation_id",
+          "winner_seq"
+        ],
+        "type": "object"
+      },
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "kizunaNote": "Optional D-conflict-journal-visibility contract, omitted when empty. conflict/004 pins the bytes; the SQL pack emits it and both clients persist _kizunasync_overwrites / COLUMN_OVERWRITTEN.",
+      "kizunaStatus": "decided",
+      "type": "array"
+    },
+    "cursor": {
+      "$ref": "common.schema.json#/$defs/cursor",
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "kizunaNote": "The new cursor is a normative component (P:cursor-monotonicity-rebase-and-atomic-checkpoints); the client persists it only after durable apply. D-cursor-opaque-token ratified the opaque text encoding.",
+      "kizunaStatus": "normative"
+    },
+    "has_more": {
+      "kizunaCites": [
+        "P:session-guarantees-and-exactly-once-effect",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "kizunaNote": "D-page-cap-and-checkpoint-boundary and D-page-cap-and-checkpoint-boundary ratified has_more as the continuation marker: false closes the pull sequence and marks the boundary where the client atomically commits staged pages with the cursor (P:session-guarantees-and-exactly-once-effect item 2, P:cursor-monotonicity-rebase-and-atomic-checkpoints).",
+      "kizunaStatus": "proposed",
+      "type": "boolean"
+    },
+    "rows": {
+      "items": {
+        "$ref": "common.schema.json#/$defs/row_change"
+      },
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:keyset-pagination-and-delivery-bound"
+      ],
+      "kizunaNote": "(seq, table, pk)-ordered (P:keyset-pagination-and-delivery-bound; invariant I-10). Latest state only: no row-image oplog (P:cursor-monotonicity-rebase-and-atomic-checkpoints).",
+      "kizunaStatus": "normative",
+      "type": "array"
+    },
+    "signal": {
+      "$ref": "common.schema.json#/$defs/signal",
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "kizunaNote": "D-signal-excludes-page-data ratified the exclusive signal shape enforced by invariant I-8: a non-null signal means empty rows and tombstones with has_more false.",
+      "kizunaStatus": "normative"
+    },
+    "tombstones": {
+      "items": {
+        "$ref": "common.schema.json#/$defs/tombstone"
+      },
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "kizunaNote": "Tombstones since cursor (P:cursor-monotonicity-rebase-and-atomic-checkpoints); same (seq, table, pk) ordering rule (invariant I-10).",
+      "kizunaStatus": "normative",
+      "type": "array"
+    }
+  },
+  "required": [
+    "cursor",
+    "has_more",
+    "rows",
+    "signal",
+    "tombstones"
+  ],
+  "type": "object"
+}

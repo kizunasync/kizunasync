@@ -1,0 +1,4 @@
+# TLC run artifacts (never commit); the jar is gitignored + auto-downloaded on first check:tla.
+tla2tools.jar
+states/
+*.st

@@ -1,0 +1,5 @@
+# The unit suite is src/**; conformance/ holds the Playwright browser lane, whose
+# *.spec.ts files bun would otherwise pick up and run without a browser
+# (`bun run test:browser`).
+[test]
+root = "src"

@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+@import '@heroui/styles';
+@import '@kizunasync/ui/theme.css';
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@font-face {
+  font-family: 'Symbols Nerd Font';
+  src: url('/fonts/SymbolsNerdFont-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+.nf {
+  font-family: 'Symbols Nerd Font', var(--font-mono);
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+}
+
+:root {
+  --accent: var(--color-site-accent);
+  --accent-foreground: var(--color-site-accent-foreground);
+  --focus: var(--color-site-accent);
+  --ring: var(--color-site-accent);
+}
+
+body {
+  background: var(--color-site-background);
+  color: var(--color-site-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,69 @@
+{
+  "prop-001-cursor-monotonic": {
+    "cfg": "tla/prop_001_cursor_monotonic.cfg",
+    "cites": [
+      "P:keyset-pagination-and-delivery-bound",
+      "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+    ],
+    "fencing": "shared",
+    "status": "tla",
+    "title": "cursor monotonicity",
+    "tla": "tla/prop_001_cursor_monotonic.tla"
+  },
+  "prop-002-no-lost-committed-change": {
+    "cfg": "tla/prop_002_no_lost_committed_change.cfg",
+    "cites": [
+      "P:keyset-pagination-and-delivery-bound",
+      "SQL:visibility-horizon"
+    ],
+    "fencing": "shared",
+    "status": "tla",
+    "title": "no lost committed change",
+    "tla": "tla/prop_002_no_lost_committed_change.tla"
+  },
+  "prop-003-exactly-once-effect": {
+    "cfg": "tla/prop_003_exactly_once_effect.cfg",
+    "cites": [
+      "P:session-guarantees-and-exactly-once-effect",
+      "P:verdict-completeness-transforms-and-conflict-rejection",
+      "SQL:clients-registry"
+    ],
+    "fencing": "shared",
+    "status": "tla",
+    "title": "exactly-once effect over at-least-once transport",
+    "tla": "tla/prop_003_exactly_once_effect.tla"
+  },
+  "prop-004-session-guarantees": {
+    "cfg": "tla/prop_004_session_guarantees.cfg",
+    "cites": [
+      "P:session-guarantees-and-exactly-once-effect"
+    ],
+    "fencing": "shared",
+    "status": "tla",
+    "title": "session guarantees per device",
+    "tla": "tla/prop_004_session_guarantees.tla"
+  },
+  "prop-005-atomic-checkpoint": {
+    "cfg": "tla/prop_005_atomic_checkpoint.cfg",
+    "cites": [
+      "P:session-guarantees-and-exactly-once-effect",
+      "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+    ],
+    "fencing": "shared",
+    "status": "tla",
+    "title": "atomic checkpoint application",
+    "tla": "tla/prop_005_atomic_checkpoint.tla"
+  },
+  "prop-006-no-resurrection": {
+    "cfg": "tla/prop_006_no_resurrection.cfg",
+    "cites": [
+      "P:mutations-and-column-masked-conflict-resolution",
+      "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+      "SQL:tombstone-reaping"
+    ],
+    "fencing": "shared",
+    "status": "tla",
+    "title": "no resurrection at any offline duration",
+    "tla": "tla/prop_006_no_resurrection.tla"
+  }
+}

@@ -1,0 +1,90 @@
+namespace kizunasync {
+  // The proc-macro UniFFI scaffolding in lib.rs is the generation source. No
+  // script, test or build step reads this file: it is a mirror of the Swift and
+  // Kotlin surface, kept in step with lib.rs by hand so a reader can see the
+  // whole surface at once, including `call()` and `call_async()` (required by
+  // packages/core/src/query/rust-uniffi-engine.ts) and the typed IKizunaSync methods.
+};
+
+[Error]
+interface KizunaSyncFfiError {
+  Engine(string code, string msg);
+};
+
+// on_event and on_status run on the handle's delivery thread, one callback at a
+// time and in emission order, so either may call back into KizunaSyncEngine. A
+// failing callback drops its own delivery, and the next one runs.
+callback interface EventObserver {
+  void on_event(FfiEngineEvent event);
+};
+
+callback interface AttachmentListener {
+  void on_status(FfiAttachmentStatus status);
+};
+
+interface KizunaSyncEngine {
+  constructor();
+  // config_json is the EngineConfig object plus database_path, remote and
+  // attachment_root. A table may also declare conflict_mode ("arrival" or
+  // "hlc"); an hlc table has the engine stamp every apply() with the origin
+  // HLC. client_id seeds the identity of a store's first open and is a uuid,
+  // the shape the server's _clients registry column takes.
+  [Throws=KizunaSyncFfiError]
+  void create(string config_json);
+  [Throws=KizunaSyncFfiError]
+  void apply(string mutation_json);
+  [Throws=KizunaSyncFfiError]
+  string query(string req_json);
+  [Throws=KizunaSyncFfiError]
+  string query_table(string table, string plan_json);
+  [Throws=KizunaSyncFfiError]
+  void sync();
+  // JSON-RPC envelope for RN / kizunasync-napi parity. Do not remove.
+  [Throws=KizunaSyncFfiError]
+  string call(string method, string params_json);
+  // call() as a future, so the React Native JavaScript thread never blocks.
+  [Async, Throws=KizunaSyncFfiError]
+  string call_async(string method, string params_json);
+  [Throws=KizunaSyncFfiError]
+  u32 outbox_depth();
+  [Throws=KizunaSyncFfiError]
+  void set_access_token(string? token);
+  [Throws=KizunaSyncFfiError]
+  void set_bucket(string params_json);
+  [Throws=KizunaSyncFfiError]
+  sequence<string> apply_where(string table, string op, string filters_json, string columns_json, string transforms_json, string precondition_json);
+  [Throws=KizunaSyncFfiError]
+  sequence<FfiRejection> rejections(boolean include_dismissed);
+  [Throws=KizunaSyncFfiError]
+  boolean dismiss_rejection(string mutation_id);
+  [Throws=KizunaSyncFfiError]
+  sequence<string> reset();
+  [Throws=KizunaSyncFfiError]
+  FfiCheckpoint checkpoint();
+  [Throws=KizunaSyncFfiError]
+  void seed_checkpoint(string cursor);
+  [Throws=KizunaSyncFfiError]
+  string inspect();
+  [Throws=KizunaSyncFfiError]
+  void shutdown();
+  [Throws=KizunaSyncFfiError]
+  void pull_once();
+  [Throws=KizunaSyncFfiError]
+  void push_once();
+  [Throws=KizunaSyncFfiError]
+  u64 subscribe(EventObserver observer);
+  [Throws=KizunaSyncFfiError]
+  void unsubscribe(u64 subscription_id);
+  [Throws=KizunaSyncFfiError]
+  FfiFromFileResult from_file(string table, string column, string pk, string source_path, string? media_type);
+  [Throws=KizunaSyncFfiError]
+  string? resolve_download(string reference);
+  [Throws=KizunaSyncFfiError]
+  void vacuum();
+  [Throws=KizunaSyncFfiError]
+  FfiAttachmentStatus? get_status(string reference);
+  [Throws=KizunaSyncFfiError]
+  u64 watch(string reference, AttachmentListener listener);
+  [Throws=KizunaSyncFfiError]
+  void unwatch(u64 watch_id);
+};

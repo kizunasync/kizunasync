@@ -1,0 +1,9 @@
+Print the version
+
+Usage: kizunasync version [OPTIONS]
+
+Options:
+  -v, --version         Print the version and exit
+      --no-color        Never emit ANSI colour (also honoured: NO_COLOR)
+      --workdir <PATH>  Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+  -h, --help            Print help

@@ -1,0 +1,282 @@
+{
+  "case": "push/006-constraint-not-a-wedge",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "DX:offline-writes"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "a permanent rejection ⇒ a rejected verdict, never a queue wedge (P:verdict-completeness-transforms-and-conflict-rejection, D-rejection-reasons): the same defensive floor RLS_DENIED and PRECONDITION get (push/002, push/004); a permanent reject dead-letters (the client surfaces it and clears the outbox entry), it never blocks or retries the queue",
+      "mutation f...006 targets pk row-3, a row this client's outbox references but the server has no record of: never inserted, never tombstoned; a non-insert op against such a row yields RLS_DENIED because an RLS-scoped server cannot (and must not) distinguish 'absent' from 'RLS-hidden' without leaking existence, the existence oracle it must not reintroduce (D-rejection-reasons); the class-23 CONSTRAINT literal stays reserved for a genuine in-transaction integrity failure",
+      "the second mutation in the same unflagged batch (an ordinary edit to the owned, existing row-1) still applies: head-of-line is never blocked (P:outbox-and-serial-in-flight); the typed MUTATION_REJECTED event surfaces the loss (DX:offline-writes)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "2"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "edited while online"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "row": null,
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "shared row"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "shared row"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "shared row"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "columns": {
+        "title": "ghost edit"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000006",
+      "n": 4,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "table": "todos"
+    },
+    {
+      "columns": {
+        "title": "edited while online"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000007",
+      "n": 5,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "title": "ghost edit"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000006",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000003",
+              "table": "todos"
+            },
+            {
+              "columns": {
+                "title": "edited while online"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000007",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000006",
+            "reason": "RLS_DENIED",
+            "server_row": null,
+            "verdict": "rejected"
+          },
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000007",
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        },
+        {
+          "check": "event",
+          "event": "MUTATION_REJECTED"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000003",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "edited while online"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    },
+    {
+      "kind": "rpc",
+      "n": 8,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "edited while online"
+            },
+            "seq": "2",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "edited while online"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 9
+    }
+  ],
+  "title": "a permanent rejection is not a wedge either: an edit against a row with no server record is rejected(RLS_DENIED) because an RLS-scoped server can't tell absent from RLS-hidden, and the rest of the batch still applies"
+}

@@ -1,0 +1,230 @@
+{
+  "case": "fencing/001-late-commit-delivered",
+  "cites": [
+    "P:keyset-pagination-and-delivery-bound",
+    "SQL:visibility-horizon"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the client checkpoint starts at cursor '4': prior sync history is elided: fencing cases use seq gaps by design (Decimal seq and cursor token)",
+      "timeline: transaction t1 stamps seq 5 at step 1 but holds its commit open until after step 5; transaction t2 stamps seq 6 at step 2 and commits immediately: the supastash-class late-commit race (P:keyset-pagination-and-delivery-bound)",
+      "the refined visibility horizon (xid8 snapshot, SQL:visibility-horizon; D-visibility-horizon): the step-3 pull delivers the committed-and-visible seq 6 EVEN THOUGH the lower seq 5 is still in-flight (pg_visible_in_snapshot), and encodes the gap as the composite cursor '6~5': high-water 6, hole at the still-in-flight 5 (the opaque token, D-cursor-opaque-token; see ../../../spec/cursor-token.ts). has_more is true: the boundary stays open because the token carries a pending hole. the client stages seq 6 invisibly against the open boundary, so its durable checkpoint is still '4' at step 4 (no-intermediate-commit). after t1 resolves, the step-6 pull (re-issued from the durable '4' after the step-5 fault) delivers BOTH seq 5 and seq 6 and the cursor closes to the flat decimal '6': the late commit is delayed, never skipped",
+      "the cursor encoding is what carries the gap: the high-water mark alone ('6') records no pending seq, so the composite token '6~5' is the delivery record this case pins (D-cursor-opaque-token, P:cursor-monotonicity-rebase-and-atomic-checkpoints)",
+      "the transport fault at step 5 makes the client retry the poll from its committed checkpoint '4' (P:keyset-pagination-and-delivery-bound)",
+      "the fenced global sequence may delay a late commit but never loses it (P:keyset-pagination-and-delivery-bound)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "visibility-horizon",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "6"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t1 (seq 5, commits late)"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t2 (seq 6, commits first)"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t1 (seq 5, commits late)"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t2 (seq 6, commits first)"
+      },
+      "kind": "server",
+      "n": 2,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 3,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "4",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "6~5",
+        "has_more": true,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000002",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t2 (seq 6, commits first)"
+            },
+            "seq": "6",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "4"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "no-intermediate-commit"
+        }
+      ],
+      "kind": "assert",
+      "n": 4
+    },
+    {
+      "fault": "transport-error",
+      "kind": "fault",
+      "n": 5,
+      "target": "pull"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "4",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "6",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t1 (seq 5, commits late)"
+            },
+            "seq": "5",
+            "table": "todos"
+          },
+          {
+            "pk": "00000000-0000-4000-8000-e10000000002",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t2 (seq 6, commits first)"
+            },
+            "seq": "6",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "6"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "written by t1 (seq 5, commits late)"
+          },
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "written by t2 (seq 6, commits first)"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    }
+  ],
+  "title": "late commit delivered: a lower seq committing after a higher seq is never lost"
+}

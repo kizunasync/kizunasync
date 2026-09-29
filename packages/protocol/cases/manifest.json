@@ -1,0 +1,597 @@
+{
+  "cases": [
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:session-guarantees-and-exactly-once-effect",
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/conflict/001-different-columns-merge.json",
+      "id": "conflict/001-different-columns-merge",
+      "priority": "P0",
+      "status": "normative",
+      "title": "concurrent writes to different columns merge under column-masked lww"
+    },
+    {
+      "cites": [
+        "P:session-guarantees-and-exactly-once-effect",
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/conflict/002-same-column-arrival-wins.json",
+      "id": "conflict/002-same-column-arrival-wins",
+      "priority": "P0",
+      "status": "normative",
+      "title": "same-column conflict: server-arrival order wins deterministically, clocks never order"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/conflict/003-hlc-origin-order.json",
+      "id": "conflict/003-hlc-origin-order",
+      "priority": "P1",
+      "status": "decided",
+      "title": "hlc-mode origin-order resolution: a lower-hlc edit that arrives later is superseded by the higher-hlc value, deterministically"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:session-guarantees-and-exactly-once-effect",
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/conflict/004-journal-on-winning-pull.json",
+      "id": "conflict/004-journal-on-winning-pull",
+      "priority": "P0",
+      "status": "normative",
+      "title": "winning pull attaches conflict journal losers when conflictJournal is on"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/001-concurrent-increments.json",
+      "id": "increment/001-concurrent-increments",
+      "priority": "P0",
+      "status": "normative",
+      "title": "concurrent increments both apply at the arbiter"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:session-guarantees-and-exactly-once-effect"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/002-increment-then-assign.json",
+      "id": "increment/002-increment-then-assign",
+      "priority": "P0",
+      "status": "normative",
+      "title": "later assign wipes a previously applied increment"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/003-assign-then-increment.json",
+      "id": "increment/003-assign-then-increment",
+      "priority": "P1",
+      "status": "normative",
+      "title": "assign then increment applies the delta on the assigned total"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/004-server-row.json",
+      "id": "increment/004-server-row",
+      "priority": "P0",
+      "status": "normative",
+      "title": "applied verdict after increment carries server_row"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/005-delete-wins.json",
+      "id": "increment/005-delete-wins",
+      "priority": "P0",
+      "status": "normative",
+      "title": "increment on a deleted row is DELETE_WINS"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/006-non-numeric-constraint.json",
+      "id": "increment/006-non-numeric-constraint",
+      "priority": "P0",
+      "status": "normative",
+      "title": "increment on a non-numeric column is CONSTRAINT"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/007-atomic-batch.json",
+      "id": "increment/007-atomic-batch",
+      "priority": "P1",
+      "status": "normative",
+      "title": "atomic batch: increment plus CONSTRAINT rolls both back"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/008-precondition-mix.json",
+      "id": "increment/008-precondition-mix",
+      "priority": "P1",
+      "status": "normative",
+      "title": "precondition assign mixed with increment in one update"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "D-field-transforms"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/009-rejected-transform-applies-no-column.json",
+      "id": "increment/009-rejected-transform-applies-no-column",
+      "priority": "P0",
+      "status": "normative",
+      "title": "a rejected transform applies none of the columns in its update"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "D-field-transforms"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/increment/010-hlc-rejected-transform-applies-no-column.json",
+      "id": "increment/010-hlc-rejected-transform-applies-no-column",
+      "priority": "P0",
+      "status": "normative",
+      "title": "hlc mode: a rejected transform applies none of the winning columns in its update"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/array/001-concurrent-union.json",
+      "id": "array/001-concurrent-union",
+      "priority": "P0",
+      "status": "normative",
+      "title": "concurrent arrayUnion of different members keeps both"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/array/002-union-then-remove.json",
+      "id": "array/002-union-then-remove",
+      "priority": "P1",
+      "status": "normative",
+      "title": "arrayUnion then arrayRemove drops the member"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:session-guarantees-and-exactly-once-effect"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/array/003-union-then-assign-lww.json",
+      "id": "array/003-union-then-assign-lww",
+      "priority": "P0",
+      "status": "normative",
+      "title": "later assign of the whole array wipes prior unions"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "SQL:visibility-horizon"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/fencing/001-late-commit-delivered.json",
+      "id": "fencing/001-late-commit-delivered",
+      "priority": "P0",
+      "status": "decided",
+      "title": "late commit delivered: a lower seq committing after a higher seq is never lost"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/fencing/002-overlap-redelivery-idempotent.json",
+      "id": "fencing/002-overlap-redelivery-idempotent",
+      "priority": "P1",
+      "status": "decided",
+      "title": "overlap re-delivery is idempotent under latest-state-only pull"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "SQL:visibility-horizon"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/fencing/003-two-holes-both-delivered.json",
+      "id": "fencing/003-two-holes-both-delivered",
+      "priority": "P1",
+      "status": "decided",
+      "title": "two holes under one high-water mark: the composite cursor carries every pending gap"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:session-guarantees-and-exactly-once-effect"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/rebase/001-cursor-advances-with-outbox.json",
+      "id": "rebase/001-cursor-advances-with-outbox",
+      "priority": "P0",
+      "status": "normative",
+      "title": "pending outbox: cursor advances and independent remote rows become visible"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:session-guarantees-and-exactly-once-effect",
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/rebase/002-different-column-visible.json",
+      "id": "rebase/002-different-column-visible",
+      "priority": "P0",
+      "status": "normative",
+      "title": "rebase overlay: local title and peer done are both visible"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:mutations-and-column-masked-conflict-resolution",
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/rebase/003-tombstone-does-not-resurrect.json",
+      "id": "rebase/003-tombstone-does-not-resurrect",
+      "priority": "P0",
+      "status": "normative",
+      "title": "pulled tombstone plus pending update does not resurrect; later DELETE_WINS"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:tombstone-reaping"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/rebase/004-rehydration-replays.json",
+      "id": "rebase/004-rehydration-replays",
+      "priority": "P0",
+      "status": "normative",
+      "title": "expired checkpoint: snapshot replace then replay keeps a pending insert"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:tombstone-reaping"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/lifecycle/001-checkpoint-expired-rehydrate.json",
+      "id": "lifecycle/001-checkpoint-expired-rehydrate",
+      "priority": "P0",
+      "status": "normative",
+      "title": "expired checkpoint: typed signal, then re-hydration drops the unreachable delete"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:schema-version-signalling"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/lifecycle/002-reset-required.json",
+      "id": "lifecycle/002-reset-required",
+      "priority": "P0",
+      "status": "normative",
+      "title": "stale schema_version: typed RESET_REQUIRED, client soft-blocks"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:schema-version-signalling"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/lifecycle/003-push-stale-schema.json",
+      "id": "lifecycle/003-push-stale-schema",
+      "priority": "P1",
+      "status": "normative",
+      "title": "push with stale schema_version: typed RESET_REQUIRED, client soft-blocks"
+    },
+    {
+      "cites": [
+        "P:outbox-and-serial-in-flight"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/lifecycle/004-soft-delete-violation.json",
+      "id": "lifecycle/004-soft-delete-violation",
+      "priority": "P1",
+      "status": "normative",
+      "title": "delete on a soft-delete table: refused locally, nothing queued"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "SQL:tombstone-reaping",
+        "D-cursor-opaque-token",
+        "D-page-cap-and-checkpoint-boundary"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/lifecycle/005-bootstrap-after-reap-pages-to-completion.json",
+      "id": "lifecycle/005-bootstrap-after-reap-pages-to-completion",
+      "priority": "P0",
+      "status": "decided",
+      "title": "a bootstrap whose first page ends below the reap horizon pages to completion"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "SQL:tombstone-reaping",
+        "D-cursor-opaque-token",
+        "D-page-cap-and-checkpoint-boundary"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/lifecycle/006-continuation-expires-when-its-start-is-reaped.json",
+      "id": "lifecycle/006-continuation-expires-when-its-start-is-reaped",
+      "priority": "P0",
+      "status": "decided",
+      "title": "a continuation expires once the reap horizon passes the checkpoint its transfer started from"
+    },
+    {
+      "cites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "SQL:pull-request-shape"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/pull/001-bootstrap-empty.json",
+      "id": "pull/001-bootstrap-empty",
+      "priority": "P1",
+      "status": "decided",
+      "title": "bootstrap pull from cursor '0' against an empty bucket"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "P:session-guarantees-and-exactly-once-effect",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/pull/002-keyset-pagination.json",
+      "id": "pull/002-keyset-pagination",
+      "priority": "P0",
+      "status": "normative",
+      "title": "keyset pagination: pages stage, the checkpoint commits atomically at the boundary"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "D-page-cap-and-checkpoint-boundary"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/pull/003-tombstone-leads-continuation-page.json",
+      "id": "pull/003-tombstone-leads-continuation-page",
+      "priority": "P1",
+      "status": "decided",
+      "title": "a tombstone at the head of the stream rides the continuation page with the first row"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "D-page-cap-and-checkpoint-boundary"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/pull/004-exact-fit-closes-checkpoint.json",
+      "id": "pull/004-exact-fit-closes-checkpoint",
+      "priority": "P1",
+      "status": "decided",
+      "title": "an exact fit closes the checkpoint in one page"
+    },
+    {
+      "cites": [
+        "D-page-cap-and-checkpoint-boundary",
+        "P:keyset-pagination-and-delivery-bound",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/pull/005-scan-cap-continues-below-the-limit.json",
+      "id": "pull/005-scan-cap-continues-below-the-limit",
+      "priority": "P1",
+      "status": "decided",
+      "title": "the scan cap ends a page below the limit, and the transfer continues from the last candidate examined"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:outbox-and-serial-in-flight",
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/001-insert-applied.json",
+      "id": "push/001-insert-applied",
+      "priority": "P0",
+      "status": "normative",
+      "title": "single insert applied: outbox cleared, write round-trips through pull"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "DX:offline-writes",
+        "D-bucket-move-out"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/002-rls-denied-not-a-wedge.json",
+      "id": "push/002-rls-denied-not-a-wedge",
+      "priority": "P0",
+      "status": "normative",
+      "title": "rls denial is a rejected verdict, never a queue wedge: the rest of the batch applies"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:session-guarantees-and-exactly-once-effect",
+        "SQL:clients-registry"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/003-replay-returns-recorded-verdicts.json",
+      "id": "push/003-replay-returns-recorded-verdicts",
+      "priority": "P0",
+      "status": "normative",
+      "title": "lost ack, identical retry: recorded verdicts return, the effect lands once"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "DX:offline-writes"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/004-precondition-rejected.json",
+      "id": "push/004-precondition-rejected",
+      "priority": "P0",
+      "status": "normative",
+      "title": "precondition mismatch: rejected(PRECONDITION), compensating revert to server_row"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/005-atomic-batch-revert.json",
+      "id": "push/005-atomic-batch-revert",
+      "priority": "P1",
+      "status": "decided",
+      "title": "atomic batch revert: all-or-nothing, single batch outcome names the offender (JSON:API shape)"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "DX:offline-writes"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/006-constraint-not-a-wedge.json",
+      "id": "push/006-constraint-not-a-wedge",
+      "priority": "P0",
+      "status": "normative",
+      "title": "a permanent rejection is not a wedge either: an edit against a row with no server record is rejected(RLS_DENIED) because an RLS-scoped server can't tell absent from RLS-hidden, and the rest of the batch still applies"
+    },
+    {
+      "cites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:session-guarantees-and-exactly-once-effect",
+        "D-verdict-ownership"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/push/007-replay-renders-current-row.json",
+      "id": "push/007-replay-renders-current-row",
+      "priority": "P1",
+      "status": "decided",
+      "title": "lost ack, identical retry of a rejected mutation: the recorded kind and reason return with the row as it stands now"
+    },
+    {
+      "cites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "SQL:tombstone-trigger"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/tombstones/001-delete-propagates.json",
+      "id": "tombstones/001-delete-propagates",
+      "priority": "P0",
+      "status": "normative",
+      "title": "server delete propagates: the tombstone rides pull and removes the local row"
+    },
+    {
+      "cites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "DX:offline-writes"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/tombstones/002-offline-edit-no-resurrection.json",
+      "id": "tombstones/002-offline-edit-no-resurrection",
+      "priority": "P0",
+      "status": "normative",
+      "title": "offline edit of a server-deleted row: delete wins, nothing resurrects"
+    },
+    {
+      "cites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "P:mutations-and-column-masked-conflict-resolution",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/tombstones/003-bucket-scoped-delete.json",
+      "id": "tombstones/003-bucket-scoped-delete",
+      "priority": "P0",
+      "status": "normative",
+      "title": "deleted PKs are bucket-scoped: a mismatched pull does not observe the tombstone"
+    },
+    {
+      "cites": [
+        "D-bucket-move-out",
+        "P:keyset-pagination-and-delivery-bound",
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/tombstones/004-bucket-move-out.json",
+      "id": "tombstones/004-bucket-move-out",
+      "priority": "P1",
+      "status": "decided",
+      "title": "a row that moves to another bucket leaves its old bucket a tombstone"
+    },
+    {
+      "cites": [
+        "P:wake-up-and-poll-fallback",
+        "A:wake-up-and-realtime-a-hint-never-a-source-of-truth"
+      ],
+      "fencing": "shared",
+      "file": "transcripts/wakeup/001-missed-wakeup-poll-converges.json",
+      "id": "wakeup/001-missed-wakeup-poll-converges",
+      "priority": "P2",
+      "status": "normative",
+      "title": "missed wake-up: a later poll pull converges"
+    },
+    {
+      "blocked_on": [
+        "D-wakeup-channel"
+      ],
+      "cites": [
+        "P:wake-up-and-poll-fallback"
+      ],
+      "fencing": "shared",
+      "file": null,
+      "id": "wakeup/002-wakeup-payload",
+      "notes": [
+        "blocked: the wake-up channel naming and payload (realtime.broadcast_changes() on private channels, optionally per-bucket) are undefined (D-wakeup-channel); zero wire bytes until specified, and correctness never depends on them (P:wake-up-and-poll-fallback)"
+      ],
+      "priority": "P2",
+      "status": "open-decision",
+      "title": "wake-up payload: channel naming and payload undefined"
+    }
+  ],
+  "future_flows": []
+}

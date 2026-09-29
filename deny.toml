@@ -1,0 +1,100 @@
+# cargo-deny: supply-chain gate for the Cargo workspace.
+# Run with `bun run cargo:deny` (or `cargo deny check`).
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[output]
+feature-depth = 1
+
+[advisories]
+# RustSec advisories are a hard failure. cargo-deny's default also errors on
+# any unmaintained advisory (no `unmaintained` key below means that default
+# applies): an unmaintained crate stops the gate exactly like a RustSec ID.
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# Permissive licences only. Anything copyleft or unlicensed must be an explicit,
+# reviewed exception below, never a silent allow.
+allow = [
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "ISC",
+  "MIT",
+  "OpenSSL",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Zlib",
+]
+confidence-threshold = 0.93
+# The allow list above is the policy, not a mirror of the lockfile: a licence
+# disappearing from the graph is not a finding.
+unused-allowed-license = "allow"
+
+# webpki-roots ships Mozilla's CA root store under the Community Data License
+# Agreement (permissive, no copyleft): it licenses the certificate DATA, not code,
+# and we redistribute it unmodified as rustls' trust anchor set. Scoped per crate
+# so no other CDLA-licensed dependency slips in.
+[[licenses.exceptions]]
+name = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
+# UniFFI is MPL-2.0 (file-level copyleft): it is the Swift/Kotlin binding
+# generator. We consume it unmodified and ship generated output, so the
+# reciprocity obligation stays with Mozilla's own files. Scoped per crate so
+# no *other* MPL dependency slips in.
+[[licenses.exceptions]]
+name = "uniffi"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_bindgen"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_core"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_internal_macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_macros"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_meta"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_pipeline"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "uniffi_udl"
+allow = ["MPL-2.0"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The workspace's own crates are unversioned path dependencies. cargo-deny only
+# honours this for private crates, which is why every `crates/*` manifest sets
+# `publish = false`.
+allow-wildcard-paths = true
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -1,0 +1,207 @@
+{
+  "case": "increment/002-increment-then-assign",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "P:session-guarantees-and-exactly-once-effect"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "honesty: an increment that already applied is wiped by a later whole-column assign (arrival-LWW). increment is not a CRDT counter."
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "likes": 99,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "start"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "likes": 0,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "start"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "likes": 0,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "start"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "columns": {},
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000015",
+      "n": 3,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos",
+      "transforms": {
+        "likes": {
+          "by": 1,
+          "op": "increment"
+        }
+      }
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {},
+              "mutation_id": "00000000-0000-4000-8000-f10000000015",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos",
+              "transforms": {
+                "likes": {
+                  "by": 1,
+                  "op": "increment"
+                }
+              }
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000015",
+            "server_row": {
+              "done": false,
+              "likes": 1,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "start"
+            },
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "likes": 99
+      },
+      "kind": "server",
+      "n": 5,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "likes": 99,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "start"
+            },
+            "seq": "3",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    }
+  ],
+  "title": "later assign wipes a previously applied increment"
+}

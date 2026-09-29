@@ -1,0 +1,210 @@
+{
+  "case": "increment/007-atomic-batch",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "G4: two increments in atomic:true; the CONSTRAINT on title rolls both back, including the likes delta."
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "1"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "likes": 0,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "start"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P1",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "likes": 0,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "start"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "likes": 0,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "start"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "columns": {},
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000020",
+      "n": 3,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos",
+      "transforms": {
+        "likes": {
+          "by": 1,
+          "op": "increment"
+        }
+      }
+    },
+    {
+      "columns": {},
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000021",
+      "n": 4,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos",
+      "transforms": {
+        "title": {
+          "by": 1,
+          "op": "increment"
+        }
+      }
+    },
+    {
+      "kind": "rpc",
+      "n": 5,
+      "request": {
+        "batch": {
+          "atomic": true,
+          "mutations": [
+            {
+              "columns": {},
+              "mutation_id": "00000000-0000-4000-8000-f10000000020",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos",
+              "transforms": {
+                "likes": {
+                  "by": 1,
+                  "op": "increment"
+                }
+              }
+            },
+            {
+              "columns": {},
+              "mutation_id": "00000000-0000-4000-8000-f10000000021",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos",
+              "transforms": {
+                "title": {
+                  "by": 1,
+                  "op": "increment"
+                }
+              }
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "batch": {
+          "offender_mutation_id": "00000000-0000-4000-8000-f10000000021",
+          "outcome": "aborted",
+          "reason": "CONSTRAINT",
+          "server_row": {
+            "done": false,
+            "likes": 1,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "start"
+          }
+        }
+      },
+      "rpc": "push"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    }
+  ],
+  "title": "atomic batch: increment plus CONSTRAINT rolls both back"
+}

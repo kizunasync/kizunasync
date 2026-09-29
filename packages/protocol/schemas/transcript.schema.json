@@ -1,0 +1,675 @@
+{
+  "$defs": {
+    "check": {
+      "kizunaCites": [
+        "P:the-golden-corpus-and-deterministic-placeholders"
+      ],
+      "kizunaNote": "Declarative client obligations. The structural harness validates their shape, the TypeScript reference executor interprets server/RPC behavior, and the Rust conformance runner executes client-local assertions and postconditions against SyncEngine.",
+      "kizunaStatus": "proposed",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:session-guarantees-and-exactly-once-effect"
+          ],
+          "kizunaNote": "Expected locally readable row state; null = absent (deleted or never present).",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "check": {
+              "const": "local-row"
+            },
+            "pk": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "row": {
+              "oneOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/column_values"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "table": {
+              "$ref": "common.schema.json#/$defs/table_name"
+            }
+          },
+          "required": [
+            "check",
+            "pk",
+            "row",
+            "table"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+          ],
+          "kizunaNote": "The durably persisted client cursor (P:cursor-monotonicity-rebase-and-atomic-checkpoints token-after-data; invariant I-3 governs when it may change).",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "check": {
+              "const": "cursor"
+            },
+            "value": {
+              "$ref": "common.schema.json#/$defs/cursor"
+            }
+          },
+          "required": [
+            "check",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:outbox-and-serial-in-flight"
+          ],
+          "kizunaNote": "Number of pending outbox entries (P:outbox-and-serial-in-flight, the DB is the queue).",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "check": {
+              "const": "outbox-depth"
+            },
+            "value": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "check",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "DX:offline-writes"
+          ],
+          "kizunaNote": "Closed union of the one-spine event bus a transcript may assert. The producer (`EngineEvent` in crates/kizunasync-engine) also raises LOCAL_CHANGED, which is client-local and never a corpus check. ATTACHMENT_* excluded: attachment events are out of the row-sync event union (D-attachments-outside-row-sync).",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "check": {
+              "const": "event"
+            },
+            "event": {
+              "enum": [
+                "MUTATION_REJECTED",
+                "CHECKPOINT_EXPIRED",
+                "RESET_REQUIRED",
+                "DEAD_LETTER",
+                "QUEUE_DEPTH",
+                "BATCH_ABORTED",
+                "COLUMN_OVERWRITTEN"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "check",
+            "event"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:session-guarantees-and-exactly-once-effect"
+          ],
+          "kizunaNote": "Atomic checkpoint apply (P:session-guarantees-and-exactly-once-effect item 2): mid-hydration fractured state is never observable.",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "check": {
+              "const": "no-intermediate-commit"
+            }
+          },
+          "required": [
+            "check"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "context": {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:clients-registry"
+      ],
+      "kizunaNote": "Test-fixture context. The executor copies context.client_id onto the request body (D-client-identity). When the key is absent the server falls back to the JWT session_id claim (resolved D-client-identity).",
+      "kizunaStatus": "proposed",
+      "properties": {
+        "client_id": {
+          "$ref": "common.schema.json#/$defs/uuid",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaStatus": "proposed"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "kizunaStatus": "proposed",
+          "type": "array"
+        },
+        "schema_version": {
+          "kizunaCites": [
+            "P:schema-version-signalling"
+          ],
+          "kizunaStatus": "proposed",
+          "type": "integer"
+        },
+        "server": {
+          "additionalProperties": false,
+          "kizunaStatus": "proposed",
+          "properties": {
+            "max_pull_scan": {
+              "kizunaCites": [
+                "D-page-cap-and-checkpoint-boundary",
+                "SQL:pull-scan-cap"
+              ],
+              "kizunaNote": "The server's scan cap, the pack's _settings.max_pull_scan: a page stops once it has examined this many candidates, the rows it withholds included, and continues from the last one it examined (D-page-cap-and-checkpoint-boundary). Absent ⇒ the pack default 5000.",
+              "kizunaStatus": "decided",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "min_schema_version": {
+              "kizunaCites": [
+                "P:schema-version-signalling",
+                "SQL:config-min-schema-version"
+              ],
+              "kizunaStatus": "proposed",
+              "type": "integer"
+            },
+            "tables": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "bucket_column": {
+                    "kizunaCites": [
+                      "P:mutations-and-column-masked-conflict-resolution",
+                      "SQL:config-bucket-column"
+                    ],
+                    "kizunaStatus": "proposed",
+                    "type": "string"
+                  },
+                  "conflict_journal": {
+                    "kizunaCites": [
+                      "P:session-guarantees-and-exactly-once-effect",
+                      "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+                    ],
+                    "kizunaNote": "Opt-in D-conflict-journal-visibility journal. When true, same-column LWW overwrites may ride pull as conflicts[]. Absent ⇒ false ⇒ the key is omitted.",
+                    "kizunaStatus": "decided",
+                    "type": "boolean"
+                  },
+                  "conflict_mode": {
+                    "enum": [
+                      "arrival",
+                      "hlc"
+                    ],
+                    "kizunaCites": [
+                      "P:verdict-completeness-transforms-and-conflict-rejection"
+                    ],
+                    "kizunaNote": "Opt-in per-table conflict resolution: 'arrival' (default, column-LWW by server arrival, conflict/002) or 'hlc' (origin-order, conflict/003). Absent ⇒ 'arrival'.",
+                    "kizunaStatus": "proposed",
+                    "type": "string"
+                  },
+                  "soft_delete_column": {
+                    "kizunaCites": [
+                      "D-corpus-soft-delete-and-refusal"
+                    ],
+                    "kizunaNote": "The app-level deletion marker column (D-corpus-soft-delete-and-refusal), mirroring `softDelete` in a client config. Present ⇒ a hard delete on this table is refused with SOFT_DELETE_VIOLATION and the row is marked with an update instead. Absent ⇒ hard deletes are legal. Never empty: the executors disagree about what an empty column name means, so the key is either a real column or absent.",
+                    "kizunaStatus": "decided",
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bucket_column"
+                ],
+                "type": "object"
+              },
+              "kizunaStatus": "proposed",
+              "type": "object"
+            },
+            "tombstone_ttl_days": {
+              "kizunaCites": [
+                "P:mutations-and-column-masked-conflict-resolution",
+                "SQL:config-tombstone-ttl-days"
+              ],
+              "kizunaNote": "Default 30 (SQL:config-tombstone-ttl-days).",
+              "kizunaStatus": "proposed",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "min_schema_version",
+            "tables",
+            "tombstone_ttl_days"
+          ],
+          "type": "object"
+        },
+        "user_id": {
+          "$ref": "common.schema.json#/$defs/uuid",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaStatus": "proposed"
+        }
+      },
+      "required": [
+        "client_id",
+        "schema_version",
+        "server",
+        "user_id"
+      ],
+      "type": "object"
+    },
+    "step": {
+      "kizunaCites": [
+        "P:the-golden-corpus-and-deterministic-placeholders"
+      ],
+      "kizunaNote": "Discriminated by kind. Every step carries n: 1-based, dense across the steps array (harness-checked).",
+      "kizunaStatus": "proposed",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:the-golden-corpus-and-deterministic-placeholders"
+          ],
+          "kizunaNote": "The byte-level conformance payload (P:the-golden-corpus-and-deterministic-placeholders 'canonical byte-level request/response sequences'). request/response stay loose here; invariant I-2 validates them against the pull/push message schemas selected by the rpc discriminator.",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "kind": {
+              "const": "rpc"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "request": {
+              "type": "object"
+            },
+            "response": {
+              "type": "object"
+            },
+            "rpc": {
+              "enum": [
+                "pull",
+                "push"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "n",
+            "request",
+            "response",
+            "rpc"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:session-guarantees-and-exactly-once-effect",
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "drop-ack = the server applied, the ack was lost (at-least-once transport, P:session-guarantees-and-exactly-once-effect): request REQUIRED. Fault vocabulary is harness-level, never wire (D-transport-error-codes).",
+          "kizunaOpen": [
+            "D-transport-error-codes"
+          ],
+          "kizunaStatus": "proposed",
+          "properties": {
+            "fault": {
+              "const": "drop-ack"
+            },
+            "kind": {
+              "const": "fault"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "request": {
+              "type": "object"
+            },
+            "target": {
+              "enum": [
+                "pull",
+                "push"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "fault",
+            "kind",
+            "n",
+            "request",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "transport-error = the request was never applied (P:verdict-completeness-transforms-and-conflict-rejection: transient errors ⇒ serial retry with backoff + jitter).",
+          "kizunaOpen": [
+            "D-transport-error-codes"
+          ],
+          "kizunaStatus": "proposed",
+          "properties": {
+            "fault": {
+              "const": "transport-error"
+            },
+            "kind": {
+              "const": "fault"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "request": {
+              "type": "object"
+            },
+            "target": {
+              "enum": [
+                "pull",
+                "push"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "fault",
+            "kind",
+            "n",
+            "target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:keyset-pagination-and-delivery-bound",
+            "SQL:changelog-op"
+          ],
+          "kizunaNote": "Out-of-band change by another actor: oracle-side setup. op vocabulary matches the changelog (SQL:changelog-op: upsert | delete). hlc is the optional origin HLC the oracle stamps for hlc-mode tables (P-4 grammar; conflict/003), the per-column high-water-mark a later push compares against; absent for arrival-mode setup.",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "actor": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "columns": {
+              "$ref": "common.schema.json#/$defs/column_values"
+            },
+            "hlc": {
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection"
+              ],
+              "kizunaNote": "Origin HLC for hlc-mode resolution (P-4 grammar, conflict/003); validated whole by invariant I-6 walkPlaceholders.",
+              "kizunaStatus": "proposed",
+              "type": "string"
+            },
+            "kind": {
+              "const": "server"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "op": {
+              "enum": [
+                "upsert",
+                "delete"
+              ],
+              "type": "string"
+            },
+            "pk": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "table": {
+              "$ref": "common.schema.json#/$defs/table_name"
+            }
+          },
+          "required": [
+            "actor",
+            "kind",
+            "n",
+            "op",
+            "pk",
+            "table"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:outbox-and-serial-in-flight"
+          ],
+          "kizunaNote": "Client-local write + outbox enqueue in the same local transaction (P:outbox-and-serial-in-flight, the DB is the queue, never a separate one).",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "columns": {
+              "$ref": "common.schema.json#/$defs/column_values"
+            },
+            "expect_error": {
+              "kizunaCites": [
+                "D-corpus-soft-delete-and-refusal"
+              ],
+              "kizunaNote": "One of the codes in spec/engine-errors.json (D-corpus-soft-delete-and-refusal). Present ⇒ the client MUST refuse this mutation with a local error carrying that code, and the step MUST leave the outbox depth unchanged. Absent ⇒ a throwing local step is a failure. The value is checked against the error catalog by the harness, not by this schema, so a new catalog code needs no schema edit.",
+              "kizunaStatus": "decided",
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "const": "local"
+            },
+            "mutation_id": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "op": {
+              "enum": [
+                "insert",
+                "update",
+                "delete"
+              ],
+              "type": "string"
+            },
+            "pk": {
+              "$ref": "common.schema.json#/$defs/uuid"
+            },
+            "precondition": {
+              "$ref": "common.schema.json#/$defs/column_values"
+            },
+            "table": {
+              "$ref": "common.schema.json#/$defs/table_name"
+            },
+            "transforms": {
+              "additionalProperties": {
+                "$ref": "common.schema.json#/$defs/transform"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "columns",
+            "kind",
+            "mutation_id",
+            "n",
+            "op",
+            "pk",
+            "table"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:the-golden-corpus-and-deterministic-placeholders"
+          ],
+          "kizunaStatus": "proposed",
+          "properties": {
+            "checks": {
+              "items": {
+                "$ref": "#/$defs/check"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "kind": {
+              "const": "assert"
+            },
+            "n": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "checks",
+            "kind",
+            "n"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "SQL:tombstone-reaping",
+            "D-cursor-opaque-token"
+          ],
+          "kizunaNote": "The tombstone reaper runs mid-transcript: every tombstone recorded so far is reaped and the reap horizon rises to the highest reaped seq, so a later pull whose checkpoint the horizon passed answers CHECKPOINT_EXPIRED (lifecycle/006). It names no table, pk, or row. Client runners ignore it like every server step: its effect reaches the client through later pull bytes.",
+          "kizunaStatus": "proposed",
+          "properties": {
+            "kind": {
+              "const": "server"
+            },
+            "n": {
+              "type": "integer"
+            },
+            "op": {
+              "const": "reap"
+            }
+          },
+          "required": [
+            "kind",
+            "n",
+            "op"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://schemas.kizunasync.dev/transcript.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "kizunaCites": [
+    "P:the-golden-corpus-and-deterministic-placeholders"
+  ],
+  "kizunaNote": "The transcript file format: test fixtures around the byte-level rpc payloads. Canonicalization rules C-1..C-9 and the UUID, timestamp, and decimal-seq placeholder grammars apply to the file bytes (invariant I-1); $refs resolve against the union of common.schema.json $defs and this file's own $defs.",
+  "kizunaStatus": "proposed",
+  "properties": {
+    "case": {
+      "kizunaCites": [
+        "P:the-golden-corpus-and-deterministic-placeholders"
+      ],
+      "kizunaNote": "<flow>/<NNN>-<slug>; must equal the manifest entry id (invariant I-12).",
+      "kizunaStatus": "proposed",
+      "pattern": "^(array|conflict|fencing|increment|lifecycle|pull|push|rebase|tombstones|wakeup)/[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "cites": {
+      "items": {
+        "pattern": "^((SQL:|CONV:|P:|A:|DR:|DX:|AT:)[a-z][a-z0-9]*(-[a-z0-9]+)*$|D-[a-z][a-z0-9]*(-[a-z0-9]+)*$)",
+        "type": "string"
+      },
+      "kizunaCites": [
+        "P:the-golden-corpus-and-deterministic-placeholders",
+        "P:protocol-is-the-product-the-corpus-is-the-arbiter"
+      ],
+      "kizunaNote": "Authority refs only (invariant I-7 grammar).",
+      "kizunaStatus": "proposed",
+      "minItems": 1,
+      "type": "array"
+    },
+    "context": {
+      "$ref": "#/$defs/context"
+    },
+    "fencing": {
+      "enum": [
+        "shared",
+        "visibility-horizon"
+      ],
+      "kizunaCites": [
+        "P:keyset-pagination-and-delivery-bound"
+      ],
+      "kizunaNote": "Fencing-divergent cases ship under transcripts/fencing and declare the mechanism D-visibility-horizon decided: the Postgres transaction-visibility horizon. All other cases are shared.",
+      "kizunaStatus": "proposed",
+      "type": "string"
+    },
+    "postconditions": {
+      "items": {
+        "$ref": "#/$defs/check"
+      },
+      "kizunaStatus": "proposed",
+      "type": "array"
+    },
+    "priority": {
+      "enum": [
+        "P0",
+        "P1",
+        "P2"
+      ],
+      "kizunaNote": "P0 contains every normative-mechanism case. Conformance runners execute every non-blocked manifest case; priority describes urgency, not whether a case runs.",
+      "kizunaStatus": "proposed",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "decided",
+        "normative",
+        "open-decision",
+        "proposed"
+      ],
+      "kizunaCites": [
+        "P:protocol-is-the-product-the-corpus-is-the-arbiter",
+        "CONV:protocol-sql-rules"
+      ],
+      "kizunaNote": "Status taxonomy: normative = directly mandated and cited; proposed = RFC-changeable; open-decision = blocked on an open record; decided = ratified.",
+      "kizunaStatus": "proposed",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/step"
+      },
+      "kizunaStatus": "proposed",
+      "minItems": 1,
+      "type": "array"
+    },
+    "title": {
+      "kizunaStatus": "proposed",
+      "type": "string"
+    }
+  },
+  "required": [
+    "case",
+    "cites",
+    "context",
+    "fencing",
+    "postconditions",
+    "priority",
+    "status",
+    "steps",
+    "title"
+  ],
+  "type": "object"
+}

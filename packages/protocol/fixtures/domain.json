@@ -1,0 +1,36 @@
+{
+  "cites": [
+    "SQL:config-bucket-column",
+    "P:mutations-and-column-masked-conflict-resolution"
+  ],
+  "notes": [
+    "Fixture domain for the conformance corpus. Invariant I-6: every table and column referenced anywhere in the corpus must exist here.",
+    "Negative contract (P:attachments-are-out-of-protocol-scope, AT:media-attachments): the domain deliberately has no attachment columns, attachment bytes never ride the row channel, and the seed exercises no attachment_id references.",
+    "bucket_column mirrors kizunasync._config.bucket_column (SQL:config-bucket-column): the declared, indexed owner column (scope: owner/tenant equality, P:mutations-and-column-masked-conflict-resolution Bucket)."
+  ],
+  "tables": {
+    "tags": {
+      "bucket_column": "owner_id",
+      "columns": {
+        "id": "uuid",
+        "label": "text",
+        "owner_id": "uuid"
+      },
+      "pk": "id"
+    },
+    "todos": {
+      "bucket_column": "owner_id",
+      "columns": {
+        "deleted_at": "timestamptz",
+        "done": "boolean",
+        "id": "uuid",
+        "labels": "text[]",
+        "likes": "integer",
+        "owner_id": "uuid",
+        "title": "text",
+        "version": "integer"
+      },
+      "pk": "id"
+    }
+  }
+}

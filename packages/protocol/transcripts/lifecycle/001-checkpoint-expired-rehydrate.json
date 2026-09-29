@@ -1,0 +1,154 @@
+{
+  "case": "lifecycle/001-checkpoint-expired-rehydrate",
+  "cites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "P:mutations-and-column-masked-conflict-resolution",
+    "SQL:tombstone-reaping"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "pre-transcript history, elided (Decimal seq and cursor token gaps stated by design): seq 1 inserted row e1, which the client applied and checkpointed at cursor '1' before going offline far past tombstone_ttl_days; seq 2 deleted e1 and that tombstone has since been reaped (SQL:tombstone-reaping); seq 3 inserted row e2",
+      "the step-1 pull at cursor '1' predates the oldest retained tombstone ⇒ typed CHECKPOINT_EXPIRED (P:cursor-monotonicity-rebase-and-atomic-checkpoints); the signal rides an empty page (I-8, D-signal-excludes-page-data) and the response echoes the request cursor: the token is invalidated, not advanced",
+      "the client re-hydrates via keyset pagination from cursor '0' (P:cursor-monotonicity-rebase-and-atomic-checkpoints, CloudKit token-expiry lineage): re-hydration rebuilds local state from the latest snapshot, so the locally retained row e1 (deleted server-side while offline, tombstone no longer available) is dropped: tombstone TTL ⊗ checkpoint expiry (P:mutations-and-column-masked-conflict-resolution) is what makes the wipe sound (property prop-006)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": null,
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "created while the client was offline"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "kind": "rpc",
+      "n": 1,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [],
+        "signal": {
+          "type": "CHECKPOINT_EXPIRED"
+        },
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "event",
+          "event": "CHECKPOINT_EXPIRED"
+        }
+      ],
+      "kind": "assert",
+      "n": 2
+    },
+    {
+      "kind": "rpc",
+      "n": 3,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000002",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "created while the client was offline"
+            },
+            "seq": "3",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "created while the client was offline"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 4
+    }
+  ],
+  "title": "expired checkpoint: typed signal, then re-hydration drops the unreachable delete"
+}

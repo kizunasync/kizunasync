@@ -1,0 +1,18 @@
+Deterministic server-side datasets
+
+Usage: kizunasync mock seed [OPTIONS]
+
+Options:
+      --table <NAME>     Target table (else the lone table in kizunasync._config)
+  -v, --version          Print the version and exit
+      --no-color         Never emit ANSI colour (also honoured: NO_COLOR)
+      --rows <ROWS>      Rows to create across all users [default: 20]
+      --users <USERS>    Distinct owner ids to spread them across [default: 3]
+      --workdir <PATH>   Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+      --images <IMAGES>  How many of those rows get an image_path [default: 0]
+      --seed <SEED>      PRNG seed, the same seed reproduces the same dataset [default: 1]
+      --clean            Delete every row this tool seeded, instead of writing more
+      --dry-run          Print the SQL and change nothing (needs no database when --table is given)
+      --yes              Apply without asking (else KSYNC_ALLOW_MOCK_SEED=1)
+      --db-url <URL>     Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+  -h, --help             Print help

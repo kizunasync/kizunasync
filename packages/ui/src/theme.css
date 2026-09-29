@@ -1,0 +1,47 @@
+@import './effects.css';
+@source './*.tsx';
+
+@theme {
+  --color-site-background: oklch(0.14 0.012 285);
+  --color-site-surface: oklch(0.175 0.013 285);
+  --color-site-raised: oklch(0.225 0.015 285);
+  --color-site-border: oklch(0.29 0.015 285);
+  --color-site-text: oklch(0.93 0.005 285);
+  --color-site-muted: oklch(0.64 0.012 285);
+  --color-site-faint: oklch(0.46 0.012 285);
+  --color-site-scrim: oklch(0.14 0.012 285 / 0.66);
+
+  --color-site-accent: oklch(0.62 0.21 29);
+  --color-site-accent-bright: oklch(0.71 0.19 33);
+  --color-site-accent-dim: oklch(0.45 0.14 29);
+  --color-site-accent-foreground: oklch(0.98 0.008 29);
+
+  --color-site-gold: oklch(0.82 0.12 85);
+  --color-site-ok: oklch(0.78 0.17 150);
+  --color-site-danger: oklch(0.64 0.22 18);
+
+  --shadow-site-elevated: 0 1px 0 var(--color-site-raised-edge) inset, 0 12px 24px -8px var(--color-site-card-shadow), 0 32px 80px -16px var(--color-site-card-shadow);
+
+  --color-brand-expo: #ffffff;
+  --color-brand-react: #61dafb;
+  --color-brand-vue: #42b883;
+  --color-brand-javascript: #f7df1e;
+  --color-brand-swift: #f05138;
+  --color-brand-kotlin: #7f52ff;
+  --color-brand-supabase: #3ecf8e;
+}
+
+:root {
+  color-scheme: dark;
+  accent-color: var(--color-site-accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-site-accent) !important;
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-site-accent);
+  color: var(--color-site-accent-foreground);
+}

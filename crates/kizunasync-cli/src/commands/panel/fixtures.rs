@@ -1,0 +1,285 @@
+//! A provisioned database answered from memory, and the ports that open it:
+//! shared by the panel tests and the bare-flow tests.
+
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+
+use jiff::Timestamp;
+
+use crate::applier::Applier;
+use crate::applier::fake::{FakeApplier, text_row};
+use crate::commands::doctor::DataApiProbe;
+use crate::commands::init::WizardConnection;
+use crate::env::Env;
+use crate::error::{Error, Result};
+use crate::pack::read_pack_files;
+use crate::provision::{PACK_FILE_KIND, hash_pack_file};
+use crate::row::Row;
+
+/// The instant every fixture clock reads.
+pub(crate) const FIXED_NOW: i64 = 1_790_000_000;
+
+/// The pack this checkout ships, addressed from the crate's manifest.
+pub(crate) fn pack_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/supabase-pack")
+}
+
+/// An environment that names the pack and nothing else.
+pub(crate) fn pack_env() -> Env {
+    Env::from_pairs(&[("KSYNC_PACK_DIR", pack_dir().to_string_lossy().as_ref())])
+}
+
+/// What the fixture's ledger records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ledger {
+    /// Every pack file with this checkout's hash, by this build.
+    Current,
+    /// Every pack file with another hash.
+    Changed,
+    /// Every pack file, by a newer kizunasync.
+    Newer,
+    /// The ledger table exists and records nothing.
+    Empty,
+}
+
+/// Which tables the fixture syncs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Synced {
+    /// `todos` read-write and `notes` pull-only.
+    TodosAndNotes,
+    /// None.
+    Nothing,
+}
+
+/// An applier the test keeps a handle on, so it can read what ran after the
+/// panel is done with it.
+pub(crate) struct Shared(pub(crate) Rc<FakeApplier>);
+
+impl Applier for Shared {
+    fn run_query(&self, sql: &str) -> Result<Vec<Row>> {
+        self.0.run_query(sql)
+    }
+}
+
+/// An opener that hands out `database` whatever the connection.
+pub(crate) fn opener(
+    database: &Rc<FakeApplier>,
+) -> impl Fn(&WizardConnection) -> Result<Box<dyn Applier>> + use<> {
+    let database = Rc::clone(database);
+
+    move |_connection: &WizardConnection| {
+        Ok(Box::new(Shared(Rc::clone(&database))) as Box<dyn Applier>)
+    }
+}
+
+/// A Data API that never answers; no fixture resolves a probe target.
+pub(crate) struct NoDataApi;
+
+impl DataApiProbe for NoDataApi {
+    fn get(&self, _url: &str, _apikey: &str, _profile: &str) -> Result<(u16, String)> {
+        Err(Error::Transport("no Data API in tests".to_owned()))
+    }
+}
+
+/// The `timestamptz::text` Postgres writes for `seconds_ago` before
+/// [`FIXED_NOW`].
+pub(crate) fn pg_time(seconds_ago: i64) -> String {
+    let instant = Timestamp::from_second(FIXED_NOW - seconds_ago).unwrap_or(Timestamp::UNIX_EPOCH);
+
+    format!("{}+00", instant.strftime("%Y-%m-%d %H:%M:%S.123456"))
+}
+
+/// One `pack-file` row per shipped file, as `ledger` records it.
+fn ledger_rows(ledger: Ledger) -> Vec<Row> {
+    if ledger == Ledger::Empty {
+        return Vec::new();
+    }
+
+    read_pack_files(&pack_dir())
+        .unwrap()
+        .iter()
+        .map(|file| {
+            let hash = match ledger {
+                Ledger::Changed => "d2581abf0000000000000000deadbeef".to_owned(),
+                Ledger::Current | Ledger::Newer | Ledger::Empty => hash_pack_file(&file.sql),
+            };
+            let version = if ledger == Ledger::Newer {
+                "999.0.0"
+            } else {
+                crate::VERSION
+            };
+
+            text_row(&[
+                ("object_kind", PACK_FILE_KIND),
+                ("object_name", &file.name),
+                ("content_hash", &hash),
+                ("pack_version", version),
+            ])
+        })
+        .collect()
+}
+
+fn config_rows(synced: Synced) -> Vec<Row> {
+    match synced {
+        Synced::Nothing => Vec::new(),
+        Synced::TodosAndNotes => vec![
+            text_row(&[("table_name", "notes"), ("sync_mode", "pull-only")]),
+            text_row(&[
+                ("table_name", "todos"),
+                ("sync_mode", "read-write"),
+                ("bucket_column", "user_id"),
+            ]),
+        ],
+    }
+}
+
+/// Four registered devices, one of them seen ten minutes ago.
+fn per_client_rows() -> Vec<Row> {
+    [600, 2 * 3600, 3 * 86400, 9 * 86400]
+        .iter()
+        .enumerate()
+        .map(|(index, seconds_ago)| {
+            text_row(&[
+                ("client_id", &format!("client-{index}")),
+                ("user_id", "user-1"),
+                ("last_seen", &pg_time(*seconds_ago)),
+                ("stale", "f"),
+            ])
+        })
+        .collect()
+}
+
+/// The three jobs: compact ran twelve minutes ago, reap two hours ago, and
+/// prune never.
+fn cron_rows() -> Vec<Row> {
+    vec![
+        text_row(&[
+            ("jobname", "kizunasync-compact-changelog"),
+            ("schedule", "47 3 * * *"),
+            ("active", "t"),
+            ("last_start", &pg_time(12 * 60)),
+            ("last_status", "succeeded"),
+        ]),
+        text_row(&[
+            ("jobname", "kizunasync-prune-clients"),
+            ("schedule", "31 3 * * *"),
+            ("active", "t"),
+        ]),
+        text_row(&[
+            ("jobname", "kizunasync-reap-tombstones"),
+            ("schedule", "16 3 * * *"),
+            ("active", "t"),
+            ("last_start", &pg_time(2 * 3600)),
+            ("last_status", "succeeded"),
+        ]),
+    ]
+}
+
+/// A database with the pack in `ledger`'s state, syncing `synced`.
+pub(crate) fn database(ledger: Ledger, synced: Synced) -> FakeApplier {
+    answering(FakeApplier::new(), ledger, synced)
+}
+
+/// [`database`] on a server without `pg_cron`.
+pub(crate) fn database_without_pg_cron(ledger: Ledger, synced: Synced) -> FakeApplier {
+    let absent =
+        FakeApplier::new().answer("extname = 'pg_cron'", vec![text_row(&[("present", "f")])]);
+
+    answering(absent, ledger, synced)
+}
+
+/// A database whose ledger records another hash, syncing `synced`, where the
+/// server refuses the re-apply over a `_settings` column an earlier build of
+/// the pack never created.
+pub(crate) fn database_of_an_earlier_build(synced: Synced) -> FakeApplier {
+    let refusing = FakeApplier::new().fail_sql(
+        "do update set content_hash",
+        "42703",
+        "42703: column \"max_pull_scan\" of relation \"_settings\" does not exist",
+    );
+
+    answering(refusing, Ledger::Changed, synced)
+}
+
+/// `answers` followed by every read of a database with the pack in
+/// `ledger`'s state, syncing `synced`: the first answer that matches wins.
+fn answering(answers: FakeApplier, ledger: Ledger, synced: Synced) -> FakeApplier {
+    answers
+        .answer(
+            "to_regclass('kizunasync._provisions')",
+            vec![text_row(&[("present", "t")])],
+        )
+        .answer(
+            "select object_kind, object_name, content_hash, pack_version",
+            ledger_rows(ledger),
+        )
+        .answer(
+            "select object_kind, count(*)::int",
+            vec![text_row(&[("object_kind", "pack-file"), ("count", "1")])],
+        )
+        .answer(
+            "object_args",
+            vec![
+                text_row(&[
+                    ("object_kind", "function"),
+                    ("object_name", "kizunasync.pull"),
+                ]),
+                text_row(&[("object_kind", "config"), ("object_name", "public.todos")]),
+            ],
+        )
+        // Before `from pg_proc p`, which the schema-count probe also reads.
+        .answer(
+            "as sequences",
+            vec![text_row(&[
+                ("tables", "12"),
+                ("sequences", "1"),
+                ("indexes", "20"),
+                ("functions", "64"),
+            ])],
+        )
+        .answer("from kizunasync._config", config_rows(synced))
+        .answer(
+            "from kizunasync._settings;",
+            vec![text_row(&[
+                ("max_batch_size", "500"),
+                ("require_atomic", "f"),
+                ("reap_schedule", "16 3 * * *"),
+                ("compact_schedule", "47 3 * * *"),
+                ("client_prune_schedule", "31 3 * * *"),
+                ("client_ttl_days", "90"),
+                ("hlc_max_skew_ms", "5000"),
+                ("tombstone_ttl_days", "30"),
+                ("max_pull_scan", "5000"),
+            ])],
+        )
+        .answer(
+            "count(distinct user_id)",
+            vec![text_row(&[
+                ("clients", "4"),
+                ("users", "1"),
+                ("stale", "0"),
+                ("ttl_days", "90"),
+            ])],
+        )
+        .answer("_cursor_high_water", per_client_rows())
+        .answer("extname = 'pg_cron'", vec![text_row(&[("present", "t")])])
+        .answer("from cron.job j", cron_rows())
+        .answer(
+            "from pg_proc p",
+            vec![
+                text_row(&[("proname", "pull")]),
+                text_row(&[("proname", "push")]),
+            ],
+        )
+        .answer(
+            "_schedule_jobs()::text",
+            vec![text_row(&[(
+                "schedules",
+                r#"{"jobs": {"kizunasync-reap-tombstones": "16 3 * * *"}, "pg_cron": true}"#,
+            )])],
+        )
+        .answer(
+            "kizunasync.reap_tombstones() as count",
+            vec![text_row(&[("count", "3")])],
+        )
+}

@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 820" width="1920" height="820" fill="none" role="img" aria-labelledby="ttl dsc">
+  <title id="ttl">Kizuna flow: offline-first sync for Supabase. Writes land in local SQLite, reconcile after reconnect, and your Postgres remains the source of truth.</title>
+  <desc id="dsc">Offline-first sync for Supabase. Three device cards share one sync loop. Noah's laptop and David's tablet are tagged online and in sync. Sarah's phone is offline: her card is dashed, her wire is dimmed, and the writes she makes land in local SQLite and queue as small slips inside her card. When she reconnects, her queued write rides the wire as a payload chip through the kizunasync card into your own Supabase project and reconciles there, and a chip stamped applied travels back to her. Only after that verdict does the update fan out from Supabase through kizunasync to Noah and David, who each get a check mark. Then Sarah goes offline again and the loop repeats. Your Postgres remains the source of truth throughout.</desc>
+  <style>.s{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+  <defs>
+    <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="10"/></filter>
+    <mask id="gaps">
+      <rect width="1920" height="820" fill="white"/>
+      <rect x="110" y="200" width="300" height="132" rx="14" fill="black"/>
+      <rect x="110" y="364" width="300" height="132" rx="14" fill="black"/>
+      <rect x="110" y="528" width="300" height="132" rx="14" fill="black"/>
+      <rect x="790" y="345" width="340" height="170" rx="14" fill="black"/>
+      <rect x="1460" y="345" width="340" height="170" rx="14" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="1920" height="820" rx="16" fill="#15141f"/>
+
+  <!-- ===== GRID ===== -->
+  <g fill="#1d1c29" opacity="0.45">
+    <rect x="-60" y="-40" width="176" height="64" rx="10"/><rect x="144" y="-40" width="176" height="64" rx="10"/><rect x="1572" y="-40" width="176" height="64" rx="10"/><rect x="1776" y="-40" width="176" height="64" rx="10"/>
+    <rect x="-162" y="52" width="176" height="64" rx="10"/><rect x="42" y="52" width="176" height="64" rx="10"/><rect x="246" y="52" width="176" height="64" rx="10"/><rect x="1470" y="52" width="176" height="64" rx="10"/><rect x="1674" y="52" width="176" height="64" rx="10"/><rect x="1878" y="52" width="176" height="64" rx="10"/>
+    <rect x="-60" y="144" width="176" height="64" rx="10"/><rect x="144" y="144" width="176" height="64" rx="10"/><rect x="1572" y="144" width="176" height="64" rx="10"/><rect x="1776" y="144" width="176" height="64" rx="10"/>
+    <rect x="-162" y="236" width="176" height="64" rx="10"/><rect x="42" y="236" width="176" height="64" rx="10"/><rect x="246" y="236" width="176" height="64" rx="10"/><rect x="450" y="236" width="176" height="64" rx="10"/><rect x="654" y="236" width="176" height="64" rx="10"/><rect x="858" y="236" width="176" height="64" rx="10"/><rect x="1062" y="236" width="176" height="64" rx="10"/><rect x="1266" y="236" width="176" height="64" rx="10"/><rect x="1470" y="236" width="176" height="64" rx="10"/><rect x="1674" y="236" width="176" height="64" rx="10"/><rect x="1878" y="236" width="176" height="64" rx="10"/>
+    <rect x="-60" y="328" width="176" height="64" rx="10"/><rect x="144" y="328" width="176" height="64" rx="10"/><rect x="348" y="328" width="176" height="64" rx="10"/><rect x="552" y="328" width="176" height="64" rx="10"/><rect x="756" y="328" width="176" height="64" rx="10"/><rect x="960" y="328" width="176" height="64" rx="10"/><rect x="1164" y="328" width="176" height="64" rx="10"/><rect x="1368" y="328" width="176" height="64" rx="10"/><rect x="1572" y="328" width="176" height="64" rx="10"/><rect x="1776" y="328" width="176" height="64" rx="10"/>
+    <rect x="-162" y="420" width="176" height="64" rx="10"/><rect x="42" y="420" width="176" height="64" rx="10"/><rect x="246" y="420" width="176" height="64" rx="10"/><rect x="450" y="420" width="176" height="64" rx="10"/><rect x="654" y="420" width="176" height="64" rx="10"/><rect x="858" y="420" width="176" height="64" rx="10"/><rect x="1062" y="420" width="176" height="64" rx="10"/><rect x="1266" y="420" width="176" height="64" rx="10"/><rect x="1470" y="420" width="176" height="64" rx="10"/><rect x="1674" y="420" width="176" height="64" rx="10"/><rect x="1878" y="420" width="176" height="64" rx="10"/>
+    <rect x="-60" y="512" width="176" height="64" rx="10"/><rect x="144" y="512" width="176" height="64" rx="10"/><rect x="348" y="512" width="176" height="64" rx="10"/><rect x="552" y="512" width="176" height="64" rx="10"/><rect x="756" y="512" width="176" height="64" rx="10"/><rect x="960" y="512" width="176" height="64" rx="10"/><rect x="1164" y="512" width="176" height="64" rx="10"/><rect x="1368" y="512" width="176" height="64" rx="10"/><rect x="1572" y="512" width="176" height="64" rx="10"/><rect x="1776" y="512" width="176" height="64" rx="10"/>
+    <rect x="-162" y="604" width="176" height="64" rx="10"/><rect x="42" y="604" width="176" height="64" rx="10"/><rect x="246" y="604" width="176" height="64" rx="10"/><rect x="450" y="604" width="176" height="64" rx="10"/><rect x="654" y="604" width="176" height="64" rx="10"/><rect x="858" y="604" width="176" height="64" rx="10"/><rect x="1062" y="604" width="176" height="64" rx="10"/><rect x="1266" y="604" width="176" height="64" rx="10"/><rect x="1470" y="604" width="176" height="64" rx="10"/><rect x="1674" y="604" width="176" height="64" rx="10"/><rect x="1878" y="604" width="176" height="64" rx="10"/>
+    <rect x="-60" y="696" width="176" height="64" rx="10"/><rect x="144" y="696" width="176" height="64" rx="10"/><rect x="348" y="696" width="176" height="64" rx="10"/><rect x="552" y="696" width="176" height="64" rx="10"/><rect x="756" y="696" width="176" height="64" rx="10"/><rect x="960" y="696" width="176" height="64" rx="10"/><rect x="1164" y="696" width="176" height="64" rx="10"/><rect x="1368" y="696" width="176" height="64" rx="10"/><rect x="1572" y="696" width="176" height="64" rx="10"/><rect x="1776" y="696" width="176" height="64" rx="10"/>
+    <rect x="-162" y="788" width="176" height="64" rx="10"/><rect x="42" y="788" width="176" height="64" rx="10"/><rect x="246" y="788" width="176" height="64" rx="10"/><rect x="450" y="788" width="176" height="64" rx="10"/><rect x="654" y="788" width="176" height="64" rx="10"/><rect x="858" y="788" width="176" height="64" rx="10"/><rect x="1062" y="788" width="176" height="64" rx="10"/><rect x="1266" y="788" width="176" height="64" rx="10"/><rect x="1470" y="788" width="176" height="64" rx="10"/><rect x="1674" y="788" width="176" height="64" rx="10"/><rect x="1878" y="788" width="176" height="64" rx="10"/>
+  </g>
+
+  <!-- ===== HEADLINE ===== -->
+  <text x="960" y="78" text-anchor="middle" class="s" font-size="46" font-weight="700" fill="#ecebf0">Offline-first sync for Supabase</text>
+  <text x="960" y="122" text-anchor="middle" class="s" font-size="21" fill="#a7a4b2">Writes land in local SQLite and reconcile after reconnect: <tspan fill="#e5484d">your Postgres remains the source of truth.</tspan></text>
+
+  <!-- ===== CARDS ===== -->
+  <rect x="790" y="345" width="340" height="170" rx="14" fill="none" stroke="#e5484d" stroke-width="3" filter="url(#glow)" opacity="0.35">
+    <animate attributeName="opacity" values="0.35;0.35;0.7;0.35;0.35" keyTimes="0;0.36667;0.38333;0.4;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+  </rect>
+
+  <rect x="110" y="200" width="300" height="132" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="322" y="190" width="68" height="20" fill="#15141f"/>
+  <text x="356" y="204" text-anchor="middle" class="m" font-size="12" letter-spacing="1.2" fill="#a7a4b2">ONLINE</text>
+  <rect x="142" y="249" width="44" height="28" rx="4" fill="none" stroke="#e5484d" stroke-width="2"/>
+  <path d="M136 281 H192" stroke="#e5484d" stroke-width="2" stroke-linecap="round"/>
+  <text x="212" y="262" class="s" font-size="22" font-weight="700" fill="#ecebf0">Noah's laptop</text>
+  <text x="212" y="284" class="m" font-size="13" fill="#a7a4b2">in sync</text>
+  <text x="274" y="285" class="s" font-size="14" fill="#e5484d" opacity="0">✓<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.75;0.775;0.825;0.85;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></text>
+
+  <rect x="110" y="364" width="300" height="132" rx="14" fill="#15141f"/>
+  <rect x="110" y="364" width="300" height="132" rx="14" fill="none" stroke="#a7a4b2" stroke-opacity="0.7" stroke-width="1.5" stroke-dasharray="5 5"><animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.25;0.3;0.85;0.93333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></rect>
+  <rect x="110" y="364" width="300" height="132" rx="14" fill="none" stroke="#26252f" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.25;0.3;0.85;0.93333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></rect>
+  <rect x="314" y="354" width="76" height="20" fill="#15141f"/>
+  <text x="352" y="368" text-anchor="middle" class="m" font-size="12" letter-spacing="1.2" fill="#a7a4b2">OFFLINE<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.25;0.275;0.89167;0.93333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></text>
+  <text x="352" y="368" text-anchor="middle" class="m" font-size="12" letter-spacing="1.2" fill="#a7a4b2" opacity="0">ONLINE<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.275;0.3;0.85;0.89167;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></text>
+  <rect x="144" y="405" width="30" height="50" rx="5" fill="none" stroke="#e5484d" stroke-width="2"/>
+  <rect x="152" y="411" width="14" height="2" rx="1" fill="#e5484d"/>
+  <text x="196" y="426" class="s" font-size="22" font-weight="700" fill="#ecebf0">Sarah's phone</text>
+  <text x="196" y="448" class="m" font-size="13" fill="#a7a4b2">keeps writing offline</text>
+  <rect x="366" y="436" width="7" height="15" fill="#e5484d">
+    <animate attributeName="opacity" values="1;0" keyTimes="0;0.5" calcMode="discrete" dur="1s" repeatCount="indefinite"/>
+  </rect>
+  <rect x="380" y="440" width="14" height="10" rx="2" fill="#26252f" stroke="#a7a4b2" stroke-opacity="0.8" stroke-width="1" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1;0.125;0.3;0.325;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></rect>
+  <rect x="384" y="436" width="14" height="10" rx="2" fill="#26252f" stroke="#a7a4b2" stroke-opacity="0.8" stroke-width="1" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.18333;0.20833;0.3;0.325;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></rect>
+  <text x="380" y="449" class="s" font-size="15" fill="#e5484d" opacity="0">✓<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.61667;0.66667;0.71667;0.75;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></text>
+
+  <rect x="110" y="528" width="300" height="132" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="322" y="518" width="68" height="20" fill="#15141f"/>
+  <text x="356" y="532" text-anchor="middle" class="m" font-size="12" letter-spacing="1.2" fill="#a7a4b2">ONLINE</text>
+  <rect x="144" y="565" width="46" height="58" rx="7" fill="none" stroke="#e5484d" stroke-width="2"/>
+  <rect x="150" y="571" width="34" height="35" rx="3" fill="none" stroke="#e5484d" stroke-opacity="0.5" stroke-width="1"/>
+  <circle cx="167" cy="615" r="1.8" fill="#e5484d"/>
+  <text x="204" y="590" class="s" font-size="22" font-weight="700" fill="#ecebf0">David's tablet</text>
+  <text x="204" y="612" class="m" font-size="13" fill="#a7a4b2">in sync</text>
+  <text x="266" y="613" class="s" font-size="14" fill="#e5484d" opacity="0">✓<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.76667;0.79167;0.825;0.85;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></text>
+
+  <rect x="790" y="345" width="340" height="170" rx="14" fill="#1d1c29" stroke="#e5484d" stroke-width="1.5"/>
+  <text id="wmk" x="853.9" y="449.1" class="s" font-size="55.01" fill="#e5484d">絆</text>
+  <text id="wm1" x="916.2" y="426" class="s" font-size="26" font-weight="700" fill="#ecebf0">Kizuna Sync</text>
+  <text id="wm2" x="916.2" y="450" class="m" font-size="18" fill="#e5484d">kizunasync</text>
+  <text x="960" y="549" text-anchor="middle" class="m" font-size="15" fill="#a7a4b2"><tspan fill="#e5484d">queues offline<animate attributeName="fill" values="#e5484d;#e5484d;#f0676b;#e5484d;#e5484d" keyTimes="0;0.36667;0.38333;0.4;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></tspan> · pushes in order</text>
+
+  <rect x="1460" y="345" width="340" height="170" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <path id="sbc1" d="M1522 407 v46 a22 8 0 0 0 44 0 v-46" fill="none" stroke="#3ECF8E" stroke-width="2"/>
+  <ellipse id="sbc2" cx="1544" cy="407" rx="22" ry="8" fill="none" stroke="#3ECF8E" stroke-width="2"/>
+  <!-- Supabase mark, path from simple-icons -->
+  <g id="sbm" transform="translate(1586 413) scale(1.41667)" fill="#3ECF8E"><path id="sbmp" d="M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C-.33 13.427.65 15.455 2.409 15.455h9.579l.113 7.51c.014.985 1.259 1.408 1.873.636l9.262-11.653c1.093-1.375.113-3.403-1.645-3.403h-9.642z"/></g>
+  <text id="sbw" x="1628" y="437" class="s" font-size="24" font-weight="700" fill="#ecebf0">Supabase</text>
+
+  <!-- ===== WIRES ===== -->
+  <g stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6">
+    <path d="M410 266 C560 266 650 405 770 405"/>
+    <path d="M410 594 C560 594 650 455 770 455"/>
+    <path d="M1140 400 H1440"/>
+    <path d="M1150 460 H1450"/>
+  </g>
+  <path d="M410 430 C560 430 650 430 770 430" stroke="#a7a4b2" stroke-opacity="0.12" stroke-width="1.5" stroke-dasharray="4 6"><animate attributeName="stroke-opacity" values="0.12;0.12;0.35;0.35;0.12;0.12" keyTimes="0;0.25;0.3;0.85;0.93333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></path>
+  <g fill="#a7a4b2" fill-opacity="0.35">
+    <polygon points="770,400 782,405 770,410"/><polygon points="770,450 782,455 770,460"/>
+    <polygon points="1440,395 1452,400 1440,405"/><polygon points="1150,455 1138,460 1150,465"/>
+  </g>
+  <polygon points="770,425 782,430 770,435" fill="#a7a4b2" fill-opacity="0.12"><animate attributeName="fill-opacity" values="0.12;0.12;0.35;0.35;0.12;0.12" keyTimes="0;0.25;0.3;0.85;0.93333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/></polygon>
+
+  <!-- ===== ANIMATION ===== -->
+  <g opacity="0">
+    <g transform="translate(1630 544)">
+      <g>
+        <rect x="-75" y="-17" width="150" height="34" rx="12" fill="#15141f" stroke="#e5484d" stroke-opacity="0.5" stroke-width="1.5"/>
+        <text x="0" y="5" text-anchor="middle" class="m" font-size="15" fill="#e5484d">✓ applied</text>
+        <animateTransform attributeName="transform" type="scale" values="1;0.98;1.04;1;1" keyTimes="0;0.45;0.47;0.49167;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      </g>
+    </g>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.45;0.49167;0.85;0.88333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+  </g>
+
+  <g mask="url(#gaps)">
+    <circle r="4" fill="#e5484d" opacity="0">
+      <animateMotion path="M410 266 C560 266 650 405 770 405" keyPoints="0;0;1;1" keyTimes="0;0.08333;0.21667;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;0.45;0.45;0;0" keyTimes="0;0.08333;0.10833;0.19167;0.21667;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="5" fill="#e5484d" opacity="0">
+      <animateMotion path="M1450 460 L1150 460" keyPoints="0;0;1;1" keyTimes="0;0.63333;0.68333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.63333;0.64583;0.67083;0.68333;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="5" fill="#e5484d" opacity="0">
+      <animateMotion path="M770 405 C650 405 560 266 410 266" keyPoints="0;0;1;1" keyTimes="0;0.68333;0.75;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.68333;0.69583;0.7375;0.75;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+    </circle>
+    <circle r="5" fill="#e5484d" opacity="0">
+      <animateMotion path="M770 455 C650 455 560 594 410 594" keyPoints="0;0;1;1" keyTimes="0;0.7;0.76667;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.7;0.7125;0.75417;0.76667;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+    </circle>
+
+    <g opacity="0">
+      <g transform="translate(-73 -17)">
+        <rect width="146" height="34" rx="8" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+        <text x="73" y="22" text-anchor="middle" class="m" font-size="14" fill="#ecebf0">{ done: true }</text>
+      </g>
+      <animateMotion path="M410 430 C560 430 650 430 790 430 C880 430 1050 400 1140 400 L1460 400" keyPoints="0;0;0.292;0.292;1;1" keyTimes="0;0.3;0.36667;0.4;0.45;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.3;0.32083;0.43333;0.45;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-73 -17)">
+        <rect width="146" height="34" rx="8" fill="#1d1c29" stroke="#e5484d" stroke-opacity="0.8" stroke-width="1.5"/>
+        <text x="73" y="22" text-anchor="middle" class="m" font-size="14" fill="#e5484d">applied ✓</text>
+      </g>
+      <animateMotion path="M1460 460 L1150 460 C1050 460 880 430 790 430 C650 430 560 430 410 430" keyPoints="0;0;0.2445;0.2445;1;1" keyTimes="0;0.49167;0.53333;0.55;0.61667;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.49167;0.5125;0.6;0.61667;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="12s" repeatCount="indefinite"/>
+    </g>
+  </g>
+</svg>

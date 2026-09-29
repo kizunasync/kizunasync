@@ -1,0 +1,244 @@
+{
+  "case": "push/004-precondition-rejected",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "DX:offline-writes"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "optional Bayou-style precondition (P:verdict-completeness-transforms-and-conflict-rejection): the mutation carries the expected value of its masked column: a CAS-style conditional claim of a shared row without claiming transactions",
+      "device-b claimed the row first (seq 2, unseen by this client); the expected value mismatches ⇒ rejected(PRECONDITION), the only rejection literal the primary source names (P:verdict-completeness-transforms-and-conflict-rejection, D-rejection-reasons), with server_row for the compensating revert",
+      "after the revert the queue is empty, so the next pull may advance the checkpoint (P:cursor-monotonicity-rebase-and-atomic-checkpoints checkpoint publish ends with the verdict); the typed MUTATION_REJECTED event surfaces the loss (DX:offline-writes)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "2"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "claimed by device-b"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "unclaimed"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "unclaimed"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "title": "claimed by device-b"
+      },
+      "kind": "server",
+      "n": 4,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "columns": {
+        "title": "claimed by device-a"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000005",
+      "n": 5,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "title": "claimed by device-a"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000005",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "precondition": {
+                "title": "unclaimed"
+              },
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000005",
+            "reason": "PRECONDITION",
+            "server_row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "claimed by device-b"
+            },
+            "verdict": "rejected"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        },
+        {
+          "check": "event",
+          "event": "MUTATION_REJECTED"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "claimed by device-b"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    },
+    {
+      "kind": "rpc",
+      "n": 8,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "claimed by device-b"
+            },
+            "seq": "2",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        }
+      ],
+      "kind": "assert",
+      "n": 9
+    }
+  ],
+  "title": "precondition mismatch: rejected(PRECONDITION), compensating revert to server_row"
+}

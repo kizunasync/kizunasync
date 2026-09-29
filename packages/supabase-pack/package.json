@@ -1,0 +1,23 @@
+{
+  "name": "@kizunasync/supabase-pack",
+  "version": "0.2.6-alpha.1",
+  "private": true,
+  "license": "LicenseRef-PolyForm-Shield-1.0.0",
+  "description": "The Kizuna SQL pack, the readable migrations `kizunasync init` provisions into the customer's Supabase project, plus the local development stack (config.toml, seed, and the db-tests harness). Publishes nothing: this workspace has no runtime entry point. The fenced pull/push bodies (the Postgres transaction-visibility horizon, D-visibility-horizon) live in 0001_kizuna_init.sql.",
+  "type": "module",
+  "scripts": {
+    "supabase": "supabase",
+    "start": "supabase start",
+    "stop": "supabase stop",
+    "status": "supabase status",
+    "reset": "supabase db reset",
+    "migrate": "supabase migration up",
+    "scratch:rebuild": "bash scripts/rebuild-scratch.sh",
+    "test": "bun test --timeout 30000 --preload ./tests/suite-teardown.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "supabase": "^2.118.0"
+  }
+}

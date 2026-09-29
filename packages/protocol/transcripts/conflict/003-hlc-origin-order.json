@@ -1,0 +1,245 @@
+{
+  "case": "conflict/003-hlc-origin-order",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "opt-in per-table hlc mode (context.server.tables.todos.conflict_mode = \"hlc\"): conflicts resolve by the mutation ORIGIN Hybrid Logical Clock, not server arrival, so the outcome is deterministic regardless of which device reconnects first (the origin-order extension of the arrival-order default, P:verdict-completeness-transforms-and-conflict-rejection).",
+      "arrival order would have let title-from-b win: this client pushed it AFTER device-b’s title-from-a had already arrived (seq 2), so a last-arrival-wins arbiter would overwrite title-from-a.",
+      "HLC origin-order makes title-from-a win instead: the title column’s high-water-mark is H3 (2026-01-01T00:00:03, device-b) and the push carries H2 (2026-01-01T00:00:02, this client); H2 < H3, so every masked column loses and the whole mutation is SUPERSEDED, reverted to the HLC winner title-from-a, deterministically and independent of arrival.",
+      "remove-wins is unchanged (delete-wins gate fires first); pull, fencing, cursor and delivery are all unchanged: hlc mode changes ONLY the push apply-decision."
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id",
+          "conflict_mode": "hlc"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "2"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "title-from-a"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P1",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "ciccio"
+      },
+      "hlc": "2026-01-01T00:00:01.000Z|0|00000000-0000-4000-8000-c10000000002",
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "ciccio"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "title": "title-from-a"
+      },
+      "hlc": "2026-01-01T00:00:03.000Z|0|00000000-0000-4000-8000-c10000000002",
+      "kind": "server",
+      "n": 4,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "columns": {
+        "title": "title-from-b"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000011",
+      "n": 5,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "title": "title-from-b"
+              },
+              "hlc": "2026-01-01T00:00:02.000Z|0|00000000-0000-4000-8000-c10000000001",
+              "mutation_id": "00000000-0000-4000-8000-f10000000011",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000011",
+            "reason": "SUPERSEDED",
+            "server_row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "title-from-a"
+            },
+            "verdict": "rejected"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        },
+        {
+          "check": "event",
+          "event": "MUTATION_REJECTED"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "title-from-a"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    },
+    {
+      "kind": "rpc",
+      "n": 8,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "title-from-a"
+            },
+            "seq": "2",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        }
+      ],
+      "kind": "assert",
+      "n": 9
+    }
+  ],
+  "title": "hlc-mode origin-order resolution: a lower-hlc edit that arrives later is superseded by the higher-hlc value, deterministically"
+}

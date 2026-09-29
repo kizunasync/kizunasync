@@ -1,0 +1,279 @@
+{
+  "case": "fencing/003-two-holes-both-delivered",
+  "cites": [
+    "P:keyset-pagination-and-delivery-bound",
+    "SQL:visibility-horizon"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the client checkpoint starts at cursor '4': prior sync history is elided: fencing cases use seq gaps by design (Decimal seq and cursor token)",
+      "timeline: transactions t1 and t2 stamp seq 5 and seq 6 at steps 1-2 but hold their commits open until after step 6; t3 stamps seq 7 at step 3 and commits immediately: two concurrent late commits under one higher committed seq (P:keyset-pagination-and-delivery-bound)",
+      "TWO holes under one high-water mark: the step-4 pull delivers the committed-and-visible seq 7 while BOTH seq 5 and seq 6 are still in-flight (pg_visible_in_snapshot, SQL:visibility-horizon), so the refined horizon encodes the composite cursor '7~5.6': high-water 7, holes 5 and 6 joined by the '.' hole separator (the opaque token, D-cursor-opaque-token; see ../../../spec/cursor-token.ts). fencing/001's single-hole token '6~5' pins no separator: only a token carrying two or more holes distinguishes a correct codec from one that joins them with another byte",
+      "has_more is true: the boundary stays open while the token carries pending holes, so the client stages seq 7 invisibly and its durable checkpoint is still '4' at step 5 (no-intermediate-commit)",
+      "the transport fault at step 6 was never applied (P:verdict-completeness-transforms-and-conflict-rejection), so the client re-issues the poll from its committed checkpoint '4'",
+      "after both held transactions resolve, the step-7 pull delivers seq 5, seq 6 AND seq 7 and the cursor closes to the flat decimal '7': every hole is delayed, never skipped (P:keyset-pagination-and-delivery-bound)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "visibility-horizon",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "7"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t1 (seq 5, commits last)"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t2 (seq 6, commits last)"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t3 (seq 7, commits first)"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P1",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t1 (seq 5, commits last)"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t2 (seq 6, commits last)"
+      },
+      "kind": "server",
+      "n": 2,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "written by t3 (seq 7, commits first)"
+      },
+      "kind": "server",
+      "n": 3,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "4",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "7~5.6",
+        "has_more": true,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000003",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t3 (seq 7, commits first)"
+            },
+            "seq": "7",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "4"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000003",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "no-intermediate-commit"
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    },
+    {
+      "fault": "transport-error",
+      "kind": "fault",
+      "n": 6,
+      "target": "pull"
+    },
+    {
+      "kind": "rpc",
+      "n": 7,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "4",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "7",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t1 (seq 5, commits last)"
+            },
+            "seq": "5",
+            "table": "todos"
+          },
+          {
+            "pk": "00000000-0000-4000-8000-e10000000002",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t2 (seq 6, commits last)"
+            },
+            "seq": "6",
+            "table": "todos"
+          },
+          {
+            "pk": "00000000-0000-4000-8000-e10000000003",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "written by t3 (seq 7, commits first)"
+            },
+            "seq": "7",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "7"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "written by t1 (seq 5, commits last)"
+          },
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "written by t2 (seq 6, commits last)"
+          },
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000003",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "written by t3 (seq 7, commits first)"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 8
+    }
+  ],
+  "title": "two holes under one high-water mark: the composite cursor carries every pending gap"
+}

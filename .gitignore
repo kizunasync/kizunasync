@@ -1,0 +1,223 @@
+###############################################################################
+# GLOBAL IGNORE
+###############################################################################
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+pnpm-debug.log*
+.bun-debug.log*
+
+# Environments
+.env
+.env.*
+!.env.example
+
+# IDEs / Editors
+.vscode/
+.idea/
+.cursor/
+.windsurf/
+*.sublime-project
+*.sublime-workspace
+
+# OS-generated files
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+###############################################################################
+# NODE / MONOREPO / COMMON JAVASCRIPT STUFF
+###############################################################################
+
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.next/
+out/
+.eslintcache
+*.tgz
+*.zip
+
+# Lockfiles (keep only one if monorepo)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Bun
+.bun/
+
+###############################################################################
+# TURBOREPO (monorepo tools)
+###############################################################################
+
+.turbo/
+
+###############################################################################
+# VERCEL / NETLIFY / DEPLOY
+###############################################################################
+
+.vercel/
+.netlify/
+
+###############################################################################
+# RUST
+###############################################################################
+
+target/
+/target/
+**/target/
+**/*.rs.bk
+**/*.rlib
+Cargo.toml.orig
+
+# Rust toolchains specific
+/.cargo-tools/
+/.rustup/
+
+# Rust byproducts (Mac/Linux/procgen/cache)
+*.dSYM
+*.so
+*.dylib
+*.dll
+*.exe
+*.profraw
+
+# cbindgen output
+bindings.h
+
+###############################################################################
+# RUST WASM (wasm-bindgen, cargo wasm)
+###############################################################################
+
+# wasm-bindgen (results and artifacts)
+wasm-pack.log
+.wasm-pack/
+
+# wasm-bindgen output, built by `bun run cargo:wasm` locally and in the wasm-build job.
+# The two generated .d.ts files beside them are committed: deterministic from the Rust source, and tsc needs them.
+packages/web/src/wasm/kizunasync_wasm.js
+packages/web/src/wasm/kizunasync_wasm_bg.wasm
+
+###############################################################################
+# RUST: UniFFI & FFI (Kotlin, Swift bindings)
+###############################################################################
+
+# Swift Package Manager
+**/.build/
+.swiftpm/xcode/package-cache
+.swiftpm/build/
+Package.pins
+
+# Swift Xcode projects/workspaces/cache/artifacts
+*.xcuserstate
+*.xcworkspace
+*.xcodeproj
+*.xcuserdata
+*.xccheckout
+*.xcodeenv
+DerivedData/
+crates/kizunasync-ffi/bindings/swift/KizunaSyncFfi.xcframework/
+crates/kizunasync-ffi/bindings/swift/KizunaSyncFfi.xcframework.stamp
+
+# Kotlin/Gradle
+**/.gradle/
+**/build/
+*.iml
+*.ipr
+*.iws
+crates/kizunasync-ffi/bindings/kotlin/android/build/
+crates/kizunasync-ffi/bindings/kotlin/engine/src/main/jniLibs/
+
+# Android Studio
+*.cxx/
+*.apk
+*.apks
+*.keystore
+
+###############################################################################
+# EXPO / REACT NATIVE
+###############################################################################
+
+# Expo
+.expo/
+.expo-shared/
+metro-cache/
+npm-packages-offline-cache/
+
+# React Native
+android/app/build/
+android/.cxx/
+ios/build/
+ios/Pods/
+
+# TurboModules
+packages/rn-uniffi/build/
+packages/rn-uniffi/ios/build/
+packages/rn-uniffi/android/.cxx/
+packages/rn-uniffi/android/build/
+packages/rn-uniffi/android/src/main/jniLibs/
+
+###############################################################################
+# PLAYWRIGHT / TEST OUTPUT
+###############################################################################
+
+# Playwright output (test reports, traces, screenshot/video)
+playwright-report/
+test-results/
+
+###############################################################################
+# PROJECT-SPECIFIC / LOCAL USER FILES
+###############################################################################
+
+# Next.js
+next-env.d.ts
+
+# CLI pack (built artifact)
+packages/cli/pack/
+
+###############################################################################
+# EXAMPLES/DEMOS OUTPUT
+###############################################################################
+
+examples/todo-ios/TodoIos.xcodeproj/
+examples/todo-ios/*.xcworkspace/
+
+# Docs code blocks type-checked by apps/website/lib/doc-snippets.test.ts (removed after each run)
+examples/*/.doc-snippets/
+
+###############################################################################
+# OS AND MISC
+###############################################################################
+
+# Others
+*.backup
+*.bak
+
+###############################################################################
+# LLMs
+###############################################################################
+
+# Agent tool local state (settings, hooks, caches)
+.claude/
+.codex/
+.gemini/
+.grok/
+
+###############################################################################
+# END OF FILE
+###############################################################################

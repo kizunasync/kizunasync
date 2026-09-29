@@ -1,0 +1,3914 @@
+{
+  "$comment": "Frozen CONFLICT parity oracle. One vector = a scripted conflict scenario: seed server state, queue local mutations, optionally interleave a pull before the verdicts and after them, then assert the FULL local effect (exact row maps, tombstone shadows, outbox depth, rejection journal, emitted events, durable cursor). The vectors are frozen: crates/kizunasync-engine/tests/conflict_vectors.rs replays them against the engine and a disagreement is an engine bug, never a vector to relax.",
+  "semantics": ["Step order per vector: seed_rows -> seed_tombstones -> seed_cursor -> local_mutations (apply, in order) -> pull_before (ONE pull RPC) -> pushes (ONE push RPC each; `verdicts` is sugar for a single { verdicts } push) -> pull_after (ONE pull RPC each).", "pull_before runs while the outbox is still non-empty, so it exercises outbox rebase (D-outbox-rebase): the checkpoint commits, pending mutations replay in FIFO over the snapshot, and independent remote rows become visible.", "Every insert `columns`, every seed/pull/expect `row` and every non-null `server_row` MUST carry `id` equal to its pk: the store keys rows by an injected `id`, so a vector is only exact when it spells that key out.", "expect.rows is the EXACT set of live rows across every configured table (compared as whole column maps); expect.tombstones is the exact set of `table/pk` shadows over the pks the vector touches.", "expect.events lists the conflict-significant event names in emission order (QUEUE_DEPTH, MUTATION_REJECTED, BATCH_ABORTED, CHECKPOINT_EXPIRED, RESET_REQUIRED, DEAD_LETTER). QUEUE_DEPTH fires once per local_mutations entry, in that order, before any push/pull outcome events. LOCAL_CHANGED is a store-changed notification at a granularity the engine does not promise, so it alone is filtered out.", "expect.rejections is compared as a set keyed by mutation_id, with changed_columns sorted: the journal `at` stamp and the column order are engine bookkeeping, not conflict semantics.", "expect_error marks a vector whose RPC must fail loud; `code` is the catalog code the failure must carry. `expect` then describes the UNTOUCHED state the failure must leave behind."],
+  "vectors": [
+    {
+      "name": "conflict/insert-applied-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_PRECONDITION_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_PRECONDITION_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_DELETE_WINS_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_DELETE_WINS_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_SUPERSEDED_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"SUPERSEDED","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_SUPERSEDED_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"SUPERSEDED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_PRECONDITION_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_PRECONDITION_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_DELETE_WINS_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_DELETE_WINS_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_SUPERSEDED_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"SUPERSEDED","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_SUPERSEDED_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"SUPERSEDED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_PRECONDITION_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_PRECONDITION_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_DELETE_WINS_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_DELETE_WINS_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_SUPERSEDED_row-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"SUPERSEDED","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_SUPERSEDED_norow-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"SUPERSEDED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert-applied-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-applied-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p2","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-applied-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"local","done":false}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-applied-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-applied-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p2","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-applied-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"local","done":false}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p2","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p2","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_CONSTRAINT_row-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p2","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p2","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/insert-rejected_RLS_DENIED_norow-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p1","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p1","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-applied-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p1","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p1","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_CONSTRAINT_row-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p1","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p1","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_RLS_DENIED_norow-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p1","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p1","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-applied-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p1","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p1","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_CONSTRAINT_row-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_before_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_before_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [
+          {"table":"todos","pk":"p1","seq":"2"}
+        ],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_before_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_after_same_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_after_same_pk_tombstone",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[],"tombstones":[{"table":"todos","pk":"p1","seq":"2"}],"signal":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/delete-rejected_RLS_DENIED_norow-pull_after_other_pk_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "2"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-aborted_offender_head-server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m1","outcome":"aborted","reason":"PRECONDITION","server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": ["todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p2","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-aborted_offender_head-no_server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m1","outcome":"aborted","reason":"PRECONDITION","server_row":null}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2", "todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-aborted_offender_middle-server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"aborted","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": ["todos/p2", "todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-aborted_offender_middle-no_server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"aborted","reason":"PRECONDITION","server_row":null}}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1", "todos/p2", "todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-aborted_offender_tail-server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m3","outcome":"aborted","reason":"PRECONDITION","server_row":{"id":"p3","owner_id":"user-a","title":"server","done":true}}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m3","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["done","id","owner_id","title"],"server_row":{"id":"p3","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-aborted_offender_tail-no_server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m3","outcome":"aborted","reason":"PRECONDITION","server_row":null}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p2", "todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m3","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_same_pk-aborted_offender_m1-server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"b1"},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m1","outcome":"aborted","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"BATCH_ABORTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_same_pk-aborted_offender_m1-no_server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"b1"},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m1","outcome":"aborted","reason":"CONSTRAINT","server_row":null}}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"BATCH_ABORTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_same_pk-aborted_offender_m2-server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"b1"},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"aborted","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"BATCH_ABORTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_same_pk-aborted_offender_m2-no_server_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"b1"},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"aborted","reason":"CONSTRAINT","server_row":null}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"BATCH_ABORTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-abort_offender_outside_batch-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m-not-a-member","outcome":"aborted","reason":"PRECONDITION","server_row":null}}
+      ],
+      "expect_error": {
+        "code": "UNKNOWN_BATCH_OFFENDER",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"b2","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"b3","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 3,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/non_atomic_push-abort_reply-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local","done":false}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m1","outcome":"aborted","reason":"PRECONDITION","server_row":null}}
+      ],
+      "expect_error": {
+        "code": "MALFORMED_PUSH_RESPONSE",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 2,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-abort_outcome_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"applied","reason":"PRECONDITION","server_row":null}}
+      ],
+      "expect_error": {
+        "code": "MALFORMED_PUSH_RESPONSE",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"b2","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"b3","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 3,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-abort_reason_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"aborted","reason":"NOT_A_REASON","server_row":null}}
+      ],
+      "expect_error": {
+        "code": "UNKNOWN_VERDICT_REASON",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"b2","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"b3","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 3,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-all_applied_verdicts-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m2","verdict":"applied"},
+        {"mutation_id":"m3","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"b2","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"b3","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_distinct_pks-mixed_verdicts-pull_none",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m2","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+        {"mutation_id":"m3","verdict":"rejected","reason":"RLS_DENIED","server_row":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}}
+        ],
+        "tombstones": ["todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"mutation_id":"m3","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "MUTATION_REJECTED", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_at_head_then_solo-two_pushes_all_applied",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"solo","done":false}}
+      ],
+      "pushes": [
+        {"verdicts":[{"mutation_id":"m1","verdict":"applied"},{"mutation_id":"m2","verdict":"applied"}]},
+        {"verdicts":[{"mutation_id":"m3","verdict":"applied"}]}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"b2","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"solo","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/batch_at_head_then_solo-batch_aborted_solo_stays_queued",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"solo","done":false}}
+      ],
+      "pushes": [
+        {"batch":{"offender_mutation_id":"m2","outcome":"aborted","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"solo","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 1,
+        "rejections": [
+          {"mutation_id":"m2","kind":"BATCH_ABORTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/solo_at_head_then_batch-solo_applied_then_batch_aborted",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"solo"}},
+        {"mutation_id":"m2","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"verdicts":[{"mutation_id":"m1","verdict":"applied"}]},
+        {"batch":{"offender_mutation_id":"m3","outcome":"aborted","reason":"CONSTRAINT","server_row":null}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"solo","done":false}}
+        ],
+        "tombstones": ["todos/p2", "todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m3","kind":"BATCH_ABORTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/solo_at_head_then_batch-verdicts_for_unsent_batch_members-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"solo"}},
+        {"mutation_id":"m2","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"b3","done":false},"batch_id":"B"}
+      ],
+      "pushes": [
+        {"verdicts":[{"mutation_id":"m1","verdict":"applied"},{"mutation_id":"m2","verdict":"applied"},{"mutation_id":"m3","verdict":"applied"}]}
+      ],
+      "expect_error": {
+        "code": "VERDICT_BIJECTION",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"solo","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"b3","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 3,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/two_consecutive_batches-each_push_carries_one_batch",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"b1","done":false},"batch_id":"B"},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"b2"},"batch_id":"B"},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"c1","done":false},"batch_id":"C"}
+      ],
+      "pushes": [
+        {"verdicts":[{"mutation_id":"m1","verdict":"applied"},{"mutation_id":"m2","verdict":"applied"}]},
+        {"batch":{"offender_mutation_id":"m3","outcome":"aborted","reason":"CONSTRAINT","server_row":null}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"b2","done":false}},
+          {"table":"todos","pk":"p2","row":{"id":"p2","owner_id":"user-a","title":"b1","done":false}}
+        ],
+        "tombstones": ["todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m3","kind":"BATCH_ABORTED","reason":"CONSTRAINT","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "BATCH_ABORTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_twice_second_push_has_empty_outbox",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"verdicts":[{"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}]},
+        {"verdicts":[{"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}]}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-verdict_for_unknown_mutation_id-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m-unknown","verdict":"applied"}
+      ],
+      "expect_error": {
+        "code": "VERDICT_BIJECTION",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-duplicate_verdict_for_one_mutation-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect_error": {
+        "code": "VERDICT_BIJECTION",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/two_updates-verdicts_out_of_request_order-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"v1"}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"v2"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m2","verdict":"applied"},
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect_error": {
+        "code": "VERDICT_BIJECTION",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"v2","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 2,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/two_updates-missing_verdict-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"v1"}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"v2"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect_error": {
+        "code": "VERDICT_BIJECTION",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"v2","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 2,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-extra_verdict-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m2","verdict":"applied"}
+      ],
+      "expect_error": {
+        "code": "VERDICT_BIJECTION",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_reason_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"NOT_A_REASON","server_row":null}
+      ],
+      "expect_error": {
+        "code": "UNKNOWN_VERDICT_REASON",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-verdict_kind_merged_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"merged","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect_error": {
+        "code": "UNKNOWN_VERDICT_REASON",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-verdict_kind_superseded_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"superseded","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect_error": {
+        "code": "UNKNOWN_VERDICT_REASON",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update_over_tombstone-applied-shadow_survives",
+      "seed_tombstones": [
+        {"table":"todos","pk":"p1","seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"id":"p1","title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","title":"local"}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert_over_tombstone-applied-shadow_survives",
+      "seed_tombstones": [
+        {"table":"todos","pk":"p1","seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"insert","columns":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/insert_over_tombstone-rejected_DELETE_WINS_norow-no_resurrection",
+      "seed_tombstones": [
+        {"table":"todos","pk":"p1","seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"insert","columns":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":null}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":["done","id","owner_id","title"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete_absent_row-applied-shadow_only",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p3","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}}
+        ],
+        "tombstones": ["todos/p3"],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete_absent_row-rejected_CONSTRAINT_row-server_row_installed",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p3","op":"delete","columns":{}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p3","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":[],"server_row":{"id":"p3","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update_precondition_absent_column-rejected_PRECONDITION_row",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"},"precondition":{"ghost_column":"never-existed"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update_precondition_match-applied",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"},"precondition":{"title":"seed"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/push_signal_RESET_REQUIRED-outbox_survives_soft_block",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"signal":{"type":"RESET_REQUIRED"}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "RESET_REQUIRED"],
+        "cursor": "1",
+        "soft_blocked": true
+      }
+    },
+    {
+      "name": "conflict/push_signal_RESET_REQUIRED-later_pull_is_a_noop",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"signal":{"type":"RESET_REQUIRED"}}
+      ],
+      "pull_after": [
+        {"cursor":"2","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "RESET_REQUIRED"],
+        "cursor": "1",
+        "soft_blocked": true
+      }
+    },
+    {
+      "name": "conflict/pull_signal_RESET_REQUIRED-later_push_is_a_noop",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [],
+        "signal": {
+          "type": "RESET_REQUIRED"
+        }
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "RESET_REQUIRED"],
+        "cursor": "1",
+        "soft_blocked": true
+      }
+    },
+    {
+      "name": "conflict/pull_signal_CHECKPOINT_EXPIRED_with_pending_outbox-then_applied",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [],
+        "signal": {
+          "type": "CHECKPOINT_EXPIRED"
+        }
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "CHECKPOINT_EXPIRED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/pull_signal_CHECKPOINT_EXPIRED_after_reject-cursor_holds",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"1","has_more":false,"rows":[],"tombstones":[],"signal":{"type":"CHECKPOINT_EXPIRED"}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED", "CHECKPOINT_EXPIRED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/pull_signal_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [],
+        "tombstones": [],
+        "signal": {
+          "type": "NOT_A_SIGNAL"
+        }
+      },
+      "expect_error": {
+        "code": "UNKNOWN_SIGNAL",
+        "stage": "pull_before",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/push_signal_outside_union-fails_loud",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"signal":{"type":"NOT_A_SIGNAL"}}
+      ],
+      "expect_error": {
+        "code": "UNKNOWN_SIGNAL",
+        "stage": "push",
+        "index": 0
+      },
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/two_updates_same_pk_same_tick-both_applied",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"v1"}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"done":true}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m2","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"v1","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/two_updates_same_pk_same_tick-second_superseded",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"v1"}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"done":true}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m2","verdict":"rejected","reason":"SUPERSEDED","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"SUPERSEDED","reason":"SUPERSEDED","changed_columns":["done"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/two_updates_same_pk_same_tick-first_rejected_second_applied",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"v1"}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"done":true}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+        {"mutation_id":"m2","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/offline_replay_five_mutations-mixed_verdicts",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p2","op":"insert","columns":{"id":"p2","owner_id":"user-a","title":"local2","done":false}},
+        {"mutation_id":"m2","table":"todos","pk":"p1","op":"update","columns":{"title":"local1"}},
+        {"mutation_id":"m3","table":"todos","pk":"p3","op":"insert","columns":{"id":"p3","owner_id":"user-a","title":"local3","done":false}},
+        {"mutation_id":"m4","table":"todos","pk":"p2","op":"update","columns":{"done":true}},
+        {"mutation_id":"m5","table":"todos","pk":"p3","op":"update","columns":{"title":"local3b"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"},
+        {"mutation_id":"m2","verdict":"rejected","reason":"CONSTRAINT","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+        {"mutation_id":"m3","verdict":"applied"},
+        {"mutation_id":"m4","verdict":"rejected","reason":"RLS_DENIED","server_row":null},
+        {"mutation_id":"m5","verdict":"applied"}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"table":"todos","pk":"p3","row":{"id":"p3","owner_id":"user-a","title":"local3b","done":false}}
+        ],
+        "tombstones": ["todos/p2"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m2","kind":"REJECTED","reason":"CONSTRAINT","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}},
+          {"mutation_id":"m4","kind":"REJECTED","reason":"RLS_DENIED","changed_columns":["done"],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "QUEUE_DEPTH", "MUTATION_REJECTED", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-rejected_PRECONDITION_row-pull_before_and_after",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pull_before": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"peer","done":true},"seq":"2"}
+        ],
+        "tombstones": [],
+        "signal": null
+      },
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"rejected","reason":"PRECONDITION","server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+      ],
+      "pull_after": [
+        {"cursor":"3","has_more":false,"rows":[{"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"late","done":true},"seq":"3"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"late","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"PRECONDITION","changed_columns":["title"],"server_row":{"id":"p1","owner_id":"user-a","title":"server","done":true}}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "3"
+      }
+    },
+    {
+      "name": "conflict/update-transport_error_then_applied_on_retry",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"transport_error":{"retryable":true}},
+        {"verdicts":[{"mutation_id":"m1","verdict":"applied"}]}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/update-permanent_transport_error-push_once_never_drops_the_write",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "pushes": [
+        {"transport_error":{"retryable":false}}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"local","done":false}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 1,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/delete-transport_error_then_rejected_DELETE_WINS_norow",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"delete","columns":{}}
+      ],
+      "pushes": [
+        {"transport_error":{"retryable":true}},
+        {"verdicts":[{"mutation_id":"m1","verdict":"rejected","reason":"DELETE_WINS","server_row":null}]}
+      ],
+      "expect": {
+        "rows": [],
+        "tombstones": ["todos/p1"],
+        "outbox_depth": 0,
+        "rejections": [
+          {"mutation_id":"m1","kind":"REJECTED","reason":"DELETE_WINS","changed_columns":[],"server_row":null}
+        ],
+        "events": ["QUEUE_DEPTH", "MUTATION_REJECTED"],
+        "cursor": "1"
+      }
+    },
+    {
+      "name": "conflict/pull_signal_CHECKPOINT_EXPIRED-rehydration_drops_absent_rows",
+      "seed_rows": [
+        {"table":"todos","pk":"p1","row":{"id":"p1","owner_id":"user-a","title":"seed","done":false},"seq":"1"}
+      ],
+      "seed_cursor": "1",
+      "local_mutations": [
+        {"mutation_id":"m1","table":"todos","pk":"p1","op":"update","columns":{"title":"local"}}
+      ],
+      "verdicts": [
+        {"mutation_id":"m1","verdict":"applied"}
+      ],
+      "pull_after": [
+        {"cursor":"1","has_more":false,"rows":[],"tombstones":[],"signal":{"type":"CHECKPOINT_EXPIRED"}},
+        {"cursor":"5","has_more":false,"rows":[{"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true},"seq":"5"}],"tombstones":[],"signal":null}
+      ],
+      "expect": {
+        "rows": [
+          {"table":"todos","pk":"p9","row":{"id":"p9","owner_id":"user-a","title":"peer","done":true}}
+        ],
+        "tombstones": [],
+        "outbox_depth": 0,
+        "rejections": [],
+        "events": ["QUEUE_DEPTH", "CHECKPOINT_EXPIRED"],
+        "cursor": "5"
+      }
+    }
+  ]
+}

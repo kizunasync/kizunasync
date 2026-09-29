@@ -1,0 +1,8 @@
+[install]
+linker = "isolated"
+globalStore = false
+
+[test]
+# Playwright specs under packages/web/conformance use `*.spec.ts`; bun would
+# otherwise load them as bun:test files when invoked from the repo root.
+pathIgnorePatterns = ["**/packages/web/conformance/**"]

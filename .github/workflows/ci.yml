@@ -1,0 +1,232 @@
+# Kizuna Sync: Continuous Integration (CI) - main quality gate.
+#
+# For more on hosting/deployment, see docs/operations/ci-cd.md
+#
+# This workflow always runs the root Turbo tasks as designed in CONVENTIONS.md,
+# and doesn't repeat any tool commands.
+
+name: ci
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+  workflow_call:
+    inputs:
+      full:
+        description: Run every job, including packaging and macOS/Windows lanes, ignoring path filters.
+        type: boolean
+        default: false
+  workflow_dispatch:
+
+# Cancel any still-running CI for a branch if a new push arrives, but let main run to completion.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  # Lock toolchain to the repo's packageManager version (bun@1.4.2, package.json).
+  BUN_VERSION: 1.4.2
+  # Disable Turbo's TUI in CI (local dev uses ui: tui per turbo.json).
+  TURBO_UI: false
+  # Vercel Remote Cache is auto-enabled if both secrets are set.
+  # When missing, turbo defaults to local cache (see CONTRIBUTING.md).
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+jobs:
+  # Main quality gate: type checks, tests, and builds the monorepo.
+  # Note: @kizunasync/supabase-pack db-tests only self-skip here due to missing Postgres;
+  # full db tests run in db-tests below (docs/operations/ci-cd.md).
+  quality:
+    name: type-check · test · build
+    runs-on: ubuntu-22.04
+    # Allows plenty of time for cold cache setup (e.g., wasm-bindgen CLI);
+    # mostly completes much faster under steady state.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Ensures turbo --affected can diff against the commit before this push; full history needed for the base commit.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # Dependencies must match the lockfile perfectly; no resolutions.
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # wasm-bindgen CLI is cached using the same key as rust-ci.yml's wasm-build;
+      # cache saves source builds where possible.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-wasm
+          cache-on-failure: true
+
+      - uses: ./.github/actions/wasm-toolchain
+
+      # Linux keyring backend for Supabase CLI: installs dbus dependencies.
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      # apps/demo/web examples require generated wasm glue;
+      # ensure it's built before main turbo run.
+      - name: bun run cargo:wasm
+        run: bun run cargo:wasm
+
+      # Ensure the native addon is built and ready for tests,
+      # as napi-loader.ts requires the dynamic lib present.
+      - name: cargo build -p kizunasync-napi
+        run: cargo build -p kizunasync-napi --target-dir target
+
+      - name: type-check · test · build
+        env:
+          # A develop push with a real previous commit scopes to changed packages plus their
+          # dependents; a full release run, a pull request, a first push to the branch, or a
+          # manual dispatch runs the full workspace, so the fallback base is develop itself.
+          TURBO_SCM_BASE: >-
+            ${{ (inputs.full != true && github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000')
+              && github.event.before || 'develop' }}
+        run: >
+          bun run turbo run type-check test build --ui stream
+          ${{ (inputs.full != true && github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000') && '--affected' || '' }}
+
+      # Check that all generated artifacts are up-to-date and committed.
+      # Each generator's output must be consistent (wire types, decision index, etc.).
+      # `bun run` takes one script and passes any further words to it as arguments, so each check gets its own invocation.
+      - name: generated-output freshness (gen · decisions · cites · gen-errors)
+        run: >
+          bun run --filter @kizunasync/protocol check:gen
+          && bun run --filter @kizunasync/protocol check:decisions
+          && bun run --filter @kizunasync/protocol check:cites
+          && bun run --filter @kizunasync/core check:gen-errors
+
+      # Root scripts are outside any workspace, so turbo type-check misses them.
+      # Run TypeScript check for root scripts in their own step for complete coverage.
+      - name: type-check root scripts
+        run: bunx tsc -p tsconfig.scripts.json
+
+  # Full db/integration test lane for @kizunasync/supabase-pack with real Postgres.
+  # Covers migrations, schemas, the kizunasync.push RPC, etc.
+  db-tests:
+    name: supabase db-tests (@kizunasync/supabase-pack)
+    # rust-cache key is OS-specific to avoid incompatible cached wasm-bindgen binaries.
+    runs-on: ubuntu-22.04
+    # Covers demo Playwright lane too; ample time for full stack plus browser tests.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # Setup the Supabase CLI devDependency early, so supabase commands work throughout.
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Cache cargo for both CLI and demo browser lane runs.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-wasm
+          cache-on-failure: true
+
+      - uses: ./.github/actions/wasm-toolchain
+
+      # Linux keyring dependencies for CLI tests.
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      # Start the Supabase stack: boots full migration/auth/realtime/db.
+      - name: Start Supabase stack
+        run: bun run db:start
+
+      # Hard fail if Postgres doesn't come up; don't pass just because tests were skipped.
+      - name: Verify Postgres is reachable
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for _ in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p 55322 -U postgres -d postgres -q; then
+              echo "postgres reachable"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Supabase Postgres never became reachable on :55322, so db-tests would have skipped silently. Failing instead."
+          exit 1
+
+      # Set SUPABASE_DB_URL explicitly so all tests use the right tech stack instance.
+      - name: Run @kizunasync/supabase-pack tests
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:55322/postgres
+        run: bun run turbo run test --ui stream --filter=@kizunasync/supabase-pack
+
+      # Run CLI DB-first commands against a real db; if anything is skipped,
+      # treat as an error—no false positives.
+      - name: cargo test -p kizunasync-cli --test postgres
+        env:
+          SUPABASE_DB_URL: postgresql://postgres:postgres@127.0.0.1:55322/postgres
+        run: |
+          set -euo pipefail
+          cargo test -p kizunasync-cli --test postgres --target-dir target -- --nocapture 2>&1 | tee "$RUNNER_TEMP/pg-it.log"
+          if grep -q '\[pg-it\] SKIPPED' "$RUNNER_TEMP/pg-it.log"; then
+            echo "::error::The CLI Postgres lane skipped a test instead of running it against this job's stack."
+            exit 1
+          fi
+
+      # Demo Playwright tests: logs in, performs actions, syncs, and needs this stack.
+      # Browser conformance tests are elsewhere (rust-ci.yml).
+      - name: bun run cargo:wasm
+        run: bun run cargo:wasm
+
+      # Install Chromium browser (and any missing shared libs) for web tests.
+      - name: Install Chromium
+        working-directory: packages/web
+        run: bunx playwright install --with-deps chromium
+
+      # Write the .env.local file for the demo by extracting API URL and key from the stack.
+      # These are not secrets, just local demo credentials.
+      - name: Write the demo environment
+        run: |
+          set -euo pipefail
+          reported="$(bun run db:status -- -- -o env)"
+          url="$(printf '%s\n' "$reported" | sed -n 's/.*API_URL="\([^"]*\)".*/\1/p')"
+          key="$(printf '%s\n' "$reported" | sed -n 's/.*PUBLISHABLE_KEY="\([^"]*\)".*/\1/p')"
+          if [ -z "$url" ] || [ -z "$key" ]; then
+            echo "::error::supabase status reported no API_URL or PUBLISHABLE_KEY, so the demo lane has nothing to sign in against."
+            exit 1
+          fi
+          printf 'VITE_DEMO_SUPABASE_URL=%s\nVITE_DEMO_SUPABASE_PUBLISHABLE_KEY=%s\n' "$url" "$key" > .env.local
+
+      - name: Run the demo browser lane
+        run: bun run --filter @kizunasync/web test:browser:demo
+
+      # If browser tests fail, upload their reports for inspection.
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: demo-lane-report
+          path: |
+            packages/web/playwright-report
+            packages/web/test-results
+
+      # Always stop the Supabase stack after the run, regardless of outcome.
+      - name: Stop Supabase stack
+        if: always()
+        run: bun run db:stop

@@ -1,0 +1,515 @@
+{
+  "$defs": {
+    "column_values": {
+      "additionalProperties": {
+        "kizunaCites": [
+          "P:mutations-and-column-masked-conflict-resolution",
+          "DR:cursor-and-sequence-decimal-string-grammar"
+        ],
+        "kizunaNote": "Scalar column values only. C-4: JSON numbers are non-negative integers < 2^31; every int64-class value rides as a decimal string (DR:cursor-and-sequence-decimal-string-grammar); floats and exponents never appear in the corpus.",
+        "kizunaStatus": "proposed",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "kizunaNote": "Postgres array columns (D-field-transforms arrayUnion/arrayRemove) encode as JSON arrays of scalars. Not a C-4 exception: C-4 still forbids floats and negative JSON numbers.",
+            "type": "array"
+          }
+        ]
+      },
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "kizunaNote": "A { column: value } map whose key set IS the column mask (P:mutations-and-column-masked-conflict-resolution 'masked columns'). Invariant I-6 requires every column to exist in fixtures/domain.json.",
+      "kizunaStatus": "proposed",
+      "type": "object"
+    },
+    "cursor": {
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:pull-request-shape",
+        "DR:cursor-and-sequence-decimal-string-grammar"
+      ],
+      "kizunaNote": "Normative concept: an opaque token encoding the last fully applied server sequence (P:mutations-and-column-masked-conflict-resolution). D-cursor-opaque-token selected a decimal high-water mark, optionally '~' plus ascending dot-separated holes. A continuation page prefixes '<start>:', the high-water of the checkpoint its transfer started from, and CHECKPOINT_EXPIRED checks that start; a checkpoint token carries none. The SQL pack emits no holes because its sequence numbers are commit-ordered, the refined reference oracle may emit them, and every codec accepts every form. Cursor '0' means bootstrap, and seq fields stay strictly decimal.",
+      "kizunaStatus": "decided",
+      "pattern": "^((0|[1-9][0-9]*):)?(0|[1-9][0-9]*)(~[1-9][0-9]*(\\.[1-9][0-9]*)*)?$",
+      "type": "string"
+    },
+    "iso_timestamp": {
+      "kizunaCites": [
+        "SQL:tombstones-deleted-at"
+      ],
+      "kizunaNote": "Logical timestamp grammar (C-8 schema-enforced): 2026-01-01T00:00:SS.000Z, SS = logical step seconds, strictly increasing per transcript for server-assigned fields.",
+      "kizunaStatus": "proposed",
+      "pattern": "^2026-01-01T00:00:[0-5][0-9]\\.000Z$",
+      "type": "string"
+    },
+    "mutation": {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "kizunaNote": "The outbox unit: mutation_id, table, pk, op, masked columns, base_hint.",
+      "kizunaStatus": "normative",
+      "properties": {
+        "base_hint": {
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaNote": "Named by P:mutations-and-column-masked-conflict-resolution, shape and semantics undefined anywhere, this schema slot permits any value; NO seed transcript uses it.",
+          "kizunaOpen": [
+            "D-base-hint"
+          ],
+          "kizunaStatus": "open-decision"
+        },
+        "columns": {
+          "$ref": "#/$defs/column_values",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaNote": "The column mask is the key set (P:mutations-and-column-masked-conflict-resolution 'masked columns'); empty for op delete.",
+          "kizunaStatus": "normative"
+        },
+        "hlc": {
+          "kizunaCites": [
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "Optional origin HLC. Arrival-mode tables do not use it for ordering; hlc-mode tables use it for per-column origin-order resolution. conflict/003 exercises the field and SUPERSEDED outcome. Wire grammar: RFC3339 UTC with millisecond precision and a Z suffix, a decimal logical counter, a node id, joined by '|'.",
+          "kizunaStatus": "normative",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z\\|\\d+\\|.+$",
+          "type": "string"
+        },
+        "mutation_id": {
+          "$ref": "#/$defs/uuid",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "op": {
+          "enum": [
+            "insert",
+            "update",
+            "delete"
+          ],
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaStatus": "normative",
+          "type": "string"
+        },
+        "pk": {
+          "$ref": "#/$defs/uuid",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "precondition": {
+          "$ref": "#/$defs/column_values",
+          "kizunaCites": [
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "Optional Bayou-style expected column-mask values (P:verdict-completeness-transforms-and-conflict-rejection); mismatch ⇒ rejected(PRECONDITION).",
+          "kizunaStatus": "normative"
+        },
+        "table": {
+          "$ref": "#/$defs/table_name",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "transforms": {
+          "additionalProperties": {
+            "$ref": "#/$defs/transform"
+          },
+          "kizunaCites": [
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "Optional field transforms on op:update only (D-field-transforms). Key MUST NOT also appear in columns. Always applied at the arbiter; not HLC-compared. Omitted when empty.",
+          "kizunaStatus": "decided",
+          "type": "object"
+        }
+      },
+      "required": [
+        "columns",
+        "mutation_id",
+        "op",
+        "pk",
+        "table"
+      ],
+      "type": "object"
+    },
+    "row_change": {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "P:keyset-pagination-and-delivery-bound"
+      ],
+      "kizunaNote": "Latest state only: Postgres-is-the-snapshot, no row-image oplog (P:cursor-monotonicity-rebase-and-atomic-checkpoints). Rows may carry attachment references as ordinary column values; attachment bytes never ride this channel (P:attachments-are-out-of-protocol-scope, AT:media-attachments). The current corpus domain has no attachment column.",
+      "kizunaStatus": "normative",
+      "properties": {
+        "pk": {
+          "$ref": "#/$defs/uuid",
+          "kizunaCites": [
+            "P:keyset-pagination-and-delivery-bound"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "row": {
+          "$ref": "#/$defs/column_values",
+          "kizunaCites": [
+            "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+          ],
+          "kizunaNote": "The full latest row state visible under the caller's RLS. The public RPC is SECURITY DEFINER for private bookkeeping, but delegates user-row reads to a SECURITY DEFINER helper owned by the non-BYPASSRLS kizunasync_rls role with the caller's JWT claims.",
+          "kizunaStatus": "normative"
+        },
+        "seq": {
+          "$ref": "#/$defs/seq",
+          "kizunaCites": [
+            "P:keyset-pagination-and-delivery-bound"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "table": {
+          "$ref": "#/$defs/table_name",
+          "kizunaCites": [
+            "P:keyset-pagination-and-delivery-bound"
+          ],
+          "kizunaStatus": "normative"
+        }
+      },
+      "required": [
+        "pk",
+        "row",
+        "seq",
+        "table"
+      ],
+      "type": "object"
+    },
+    "seq": {
+      "kizunaCites": [
+        "P:keyset-pagination-and-delivery-bound",
+        "SQL:global-change-sequence",
+        "DR:cursor-and-sequence-decimal-string-grammar"
+      ],
+      "kizunaNote": "Server-assigned sequence from one global sequence shared by all synced tables, drawn when the writing transaction commits (P:session-guarantees-and-exactly-once-effect mechanism 1; SQL:global-change-sequence). Decimal string on the wire (DR:cursor-and-sequence-decimal-string-grammar 'protocol state stored as TEXT everywhere'). Decimal seq and cursor token: dense from '1' per transcript except fencing cases (gaps by design).",
+      "kizunaStatus": "proposed",
+      "pattern": "^(0|[1-9][0-9]*)$",
+      "type": "string"
+    },
+    "signal": {
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+      ],
+      "kizunaNote": "Signal names are normative (P:cursor-monotonicity-rebase-and-atomic-checkpoints). D-signal-excludes-page-data ratified the exclusive shape enforced by invariant I-8: a non-null signal means empty rows and tombstones with has_more false.",
+      "kizunaStatus": "normative",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "CHECKPOINT_EXPIRED",
+                "RESET_REQUIRED"
+              ],
+              "kizunaCites": [
+                "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+              ],
+              "kizunaNote": "CHECKPOINT_EXPIRED: cursor predates oldest retained tombstone ⇒ client re-hydrates via keyset pagination. RESET_REQUIRED: client schema_version below the configured minimum ⇒ soft-block (P:schema-version-signalling).",
+              "kizunaStatus": "normative",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "table_name": {
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "kizunaNote": "Synced user-table name. Invariant I-6 additionally requires membership in fixtures/domain.json.",
+      "kizunaStatus": "proposed",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "type": "string"
+    },
+    "tombstone": {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:tombstones-table"
+      ],
+      "kizunaNote": "Tombstone field set: (table, pk, seq, deleted_at), written by AFTER DELETE trigger and reaped past TTL; TTL interacts with checkpoint expiry.",
+      "kizunaStatus": "normative",
+      "properties": {
+        "deleted_at": {
+          "$ref": "#/$defs/iso_timestamp",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "SQL:tombstones-deleted-at"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "pk": {
+          "$ref": "#/$defs/uuid",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "SQL:tombstones-pk"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "seq": {
+          "$ref": "#/$defs/seq",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "SQL:tombstones-seq"
+          ],
+          "kizunaStatus": "normative"
+        },
+        "table": {
+          "$ref": "#/$defs/table_name",
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "SQL:tombstones-table-name"
+          ],
+          "kizunaStatus": "normative"
+        }
+      },
+      "required": [
+        "deleted_at",
+        "pk",
+        "seq",
+        "table"
+      ],
+      "type": "object"
+    },
+    "transform": {
+      "kizunaCites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "kizunaNote": "Closed field-transform menu (D-field-transforms). increment.by is a signed integer: schema exception to C-4 (C-4 non-negative ints stay on column_values). JSON number when |n| < 2^31, else decimal string.",
+      "kizunaStatus": "decided",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "by": {
+              "oneOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "pattern": "^-?(0|[1-9][0-9]*)$",
+                  "type": "string"
+                }
+              ]
+            },
+            "op": {
+              "const": "increment",
+              "type": "string"
+            }
+          },
+          "required": [
+            "by",
+            "op"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "op": {
+              "enum": [
+                "arrayRemove",
+                "arrayUnion"
+              ],
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "op",
+            "values"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "uuid": {
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution"
+      ],
+      "kizunaNote": "Production wire values are RFC-4122 UUIDs; the corpus pins placeholder grammar: 00000000-0000-4000-8000-KKNNNNNNNNNN with kind codes a1 user · c1 client · e1 row pk · f1 mutation. Invariant I-6 requires registration in fixtures/identifiers.json.",
+      "kizunaStatus": "proposed",
+      "pattern": "^00000000-0000-4000-8000-(a1|c1|e1|f1)[0-9]{10}$",
+      "type": "string"
+    },
+    "verdict": {
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "kizunaNote": "The union is normative: applied | rejected(reason, server_row) (P:mutations-and-column-masked-conflict-resolution Verdict, Realm compensating-writes lineage). D-verdict-correlation ratified dual correlation by request order and mutation_id, and invariant I-5 enforces the bijection for verdict responses.",
+      "kizunaStatus": "normative",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution"
+          ],
+          "kizunaNote": "applied ⇒ the client clears the outbox entry (P:verdict-completeness-transforms-and-conflict-rejection).",
+          "kizunaStatus": "normative",
+          "properties": {
+            "mutation_id": {
+              "$ref": "#/$defs/uuid",
+              "kizunaCites": [
+                "P:mutations-and-column-masked-conflict-resolution"
+              ],
+              "kizunaStatus": "proposed"
+            },
+            "server_row": {
+              "$ref": "#/$defs/column_values",
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection"
+              ],
+              "kizunaNote": "Optional. Required when any mutation.transforms ran (D-field-transforms) so the client can snap optimistic local state to the arbiter total. Omitted on ordinary assigns.",
+              "kizunaStatus": "decided"
+            },
+            "verdict": {
+              "const": "applied",
+              "kizunaCites": [
+                "P:mutations-and-column-masked-conflict-resolution"
+              ],
+              "kizunaStatus": "normative"
+            }
+          },
+          "required": [
+            "mutation_id",
+            "verdict"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "A rejected verdict drives a compensating revert to server_row plus a typed event (P:verdict-completeness-transforms-and-conflict-rejection).",
+          "kizunaStatus": "normative",
+          "properties": {
+            "mutation_id": {
+              "$ref": "#/$defs/uuid",
+              "kizunaCites": [
+                "P:mutations-and-column-masked-conflict-resolution"
+              ],
+              "kizunaStatus": "proposed"
+            },
+            "reason": {
+              "enum": [
+                "COLUMN_DENIED",
+                "PRECONDITION",
+                "RLS_DENIED",
+                "CONSTRAINT",
+                "DELETE_WINS",
+                "SUPERSEDED"
+              ],
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection",
+                "P:mutations-and-column-masked-conflict-resolution",
+                "P:protocol-is-the-product-the-corpus-is-the-arbiter"
+              ],
+              "kizunaNote": "Closed union (D-rejection-reasons). RLS_DENIED also covers a non-insert against an absent or caller-hidden row because an RLS-scoped server must not leak which case occurred (push/006). CONSTRAINT is a class-23 or class-22 error, or a P0001, raised while the mutation's row is applied, and rejects that mutation alone; DELETE_WINS rejects edits of tombstoned rows; SUPERSEDED means every masked column lost the hlc-mode comparison (conflict/003). COLUMN_DENIED refuses a mutation that writes a column the caller's role may not write; server_row carries the readable columns.",
+              "kizunaStatus": "proposed",
+              "type": "string"
+            },
+            "server_row": {
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection"
+              ],
+              "kizunaNote": "The row for the compensating revert (P:verdict-completeness-transforms-and-conflict-rejection). D-rejection-reasons ratified null when the row is caller-invisible under RLS or deleted; delete-wins therefore reverts to local absence.",
+              "kizunaStatus": "normative",
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/column_values"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "verdict": {
+              "const": "rejected",
+              "kizunaCites": [
+                "P:mutations-and-column-masked-conflict-resolution"
+              ],
+              "kizunaStatus": "normative"
+            }
+          },
+          "required": [
+            "mutation_id",
+            "reason",
+            "server_row",
+            "verdict"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "https://schemas.kizunasync.dev/common.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "kizunaCites": [
+    "P:mutations-and-column-masked-conflict-resolution",
+    "P:the-golden-corpus-and-deterministic-placeholders"
+  ],
+  "kizunaNote": "Shared $defs for the corpus. Intra-corpus $ref values are either #/$defs/<name> or common.schema.json#/$defs/<name>, resolved against the union of these $defs and the validating schema's own $defs (harness/ajv-validate.ts).",
+  "kizunaStatus": "proposed"
+}

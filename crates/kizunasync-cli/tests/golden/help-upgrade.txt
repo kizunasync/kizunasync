@@ -1,0 +1,16 @@
+Apply the pack files the ledger does not record yet when all are additive, or re-apply the pack with --reapply
+
+Usage: kizunasync upgrade [OPTIONS]
+
+Options:
+      --dry-run               Show the plan and change nothing
+  -v, --version               Print the version and exit
+      --no-color              Never emit ANSI colour (also honoured: NO_COLOR)
+      --yes                   Apply without asking (upgrade never prompts)
+      --reapply               Re-apply every pack file: restores dropped pack objects on an up-to-date project, and records this build's hash when the ledger records another one
+      --workdir <PATH>        Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+      --allow-no-cron         Exit 0 when the job schedules cannot be applied after the upgrade, and run retention yourself
+      --db-url <URL>          Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+      --project-ref <REF>     Drive the Supabase Management API against this project instead
+      --access-token <TOKEN>  Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+  -h, --help                  Print help

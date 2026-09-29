@@ -1,0 +1,28 @@
+[package]
+name = "kizunasync-napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "N-API addon: the Node and Bun engine of @kizunasync/core"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+name = "kizunasync_napi"
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+napi = { version = "2", default-features = false, features = ["napi4", "serde-json", "tokio_rt", "async"] }
+napi-derive = "2"
+kizunasync-engine = { path = "../kizunasync-engine" }
+kizunasync-protocol = { path = "../kizunasync-protocol" }
+
+[build-dependencies]
+napi-build = "2"
+
+[lints]
+workspace = true

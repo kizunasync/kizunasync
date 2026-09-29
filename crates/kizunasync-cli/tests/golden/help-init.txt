@@ -1,0 +1,110 @@
+Provision Kizuna into your Supabase project
+
+Usage: kizunasync init [OPTIONS]
+
+Options:
+      --dry-run
+          Show the plan and change nothing
+
+  -v, --version
+          Print the version and exit
+
+      --no-color
+          Never emit ANSI colour (also honoured: NO_COLOR)
+
+      --yes
+          Write without asking
+
+      --local-only
+          Write migrations but do not apply
+
+      --workdir <PATH>
+          Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+
+      --schema <SCHEMA>
+          Schema the synced tables live in (the pack supports public only)
+          
+          [default: public]
+
+      --project-ref <REF>
+          Provision the hosted project over the Management API
+
+      --db-url <URL>
+          Postgres connection string for introspection
+
+      --access-token <TOKEN>
+          Personal Access Token for --project-ref
+
+      --max-batch-size <N>
+          Largest push the server accepts (default: 500)
+
+      --no-max-batch-size
+          Accept a push of any size (default: 500)
+
+      --require-atomic
+          Reject a non-atomic push (default: off)
+
+      --no-require-atomic
+          Accept a non-atomic push (default: off)
+
+      --sync <MODE>
+          Sync mode for every added table (default: pull-only)
+
+          Possible values:
+          - pull-only:  Pulled, but a push targeting it is rejected server-side
+          - read-write: Bidirectional
+
+      --bucket-column <COL>
+          Column every added table's rows are scoped by (default: none)
+
+      --soft-delete <COL>
+          Soft-delete column for every added table (default: none)
+
+      --conflict <MODE>
+          Conflict mode for every added table (default: arrival)
+
+          Possible values:
+          - arrival: Column-LWW by server arrival order
+          - hlc:     Column-LWW keyed on the origin HLC
+
+      --conflict-journal
+          Record overwritten same-column values server-side (default: off)
+
+      --register-clients
+          Record one client row per device that syncs a table (default: off)
+
+      --no-register-clients
+          Do not record client rows (default: off)
+
+      --min-schema-version <N>
+          Lowest client schema version every table accepts (default: 1)
+
+      --tombstone-ttl-days <DAYS>
+          Project-wide tombstone retention in days (default: 30)
+
+      --reap-schedule <CRON>
+          UTC crontab for the tombstone reaper (default: 16 3 * * *)
+
+      --compact-schedule <CRON>
+          UTC crontab for the changelog compactor (default: 47 3 * * *)
+
+      --client-prune-schedule <CRON>
+          UTC crontab for the client pruner (default: 31 3 * * *)
+
+      --client-ttl-days <DAYS>
+          Days of silence after which a client row is pruned (default: 90)
+
+      --hlc-max-skew-ms <MS>
+          Forward-drift tolerance for an origin HLC (default: 5000)
+
+      --max-pull-scan <N>
+          Candidates one pull page examines at most (default: 5000)
+
+      --allow-no-cron
+          Install without scheduled retention when pg_cron is absent
+
+      --allow-no-rls
+          Sync a table even when its row level security is disabled
+
+  -h, --help
+          Print help (see a summary with '-h')

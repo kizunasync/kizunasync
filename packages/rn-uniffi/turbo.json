@@ -1,0 +1,12 @@
+{
+  "$schema": "https://v2-10-12.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/swift-package/**"
+      ]
+    }
+  }
+}

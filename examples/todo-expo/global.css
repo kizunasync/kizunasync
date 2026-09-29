@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'heroui-native/styles';
+
+@theme inline static {
+  --color-accent-hover: #f0676b;
+  --color-default-hover: #34323f;
+  --color-danger-hover: #f0676b;
+  --color-danger-soft-hover: rgba(229, 72, 77, 0.14);
+  --color-warning-hover: #e0b341;
+}
+
+@layer theme {
+  :root {
+    @variant dark {
+      --background: #15141f;
+      --foreground: #ecebf0;
+
+      --surface: #1d1c29;
+      --surface-foreground: #ecebf0;
+
+      --surface-secondary: #26252f;
+      --surface-secondary-foreground: #ecebf0;
+
+      --surface-tertiary: #191824;
+      --surface-tertiary-foreground: #ecebf0;
+
+      --overlay: #26252f;
+      --overlay-foreground: #ecebf0;
+      --backdrop: rgba(10, 9, 15, 0.66);
+
+      --muted: #a7a4b2;
+
+      --default: #26252f;
+      --default-foreground: #ecebf0;
+
+      --accent: #e5484d;
+      --accent-foreground: #ffffff;
+
+      --field-background: #1d1c29;
+      --field-foreground: #ecebf0;
+      --field-placeholder: #76727f;
+      --field-border: #34323f;
+
+      --success: #46a758;
+      --success-foreground: #ffffff;
+
+      --warning: #d99528;
+      --warning-foreground: #ffffff;
+
+      --danger: #f43a57;
+      --danger-foreground: #ffffff;
+
+      --segment: #26252f;
+      --segment-foreground: #ecebf0;
+
+      --border: #34323f;
+      --separator: #2a2935;
+      --focus: #f0676b;
+      --link: #e5484d;
+    }
+  }
+}

@@ -1,0 +1,142 @@
+[
+  {
+    "code": "ATTACHMENT_HASH_MISMATCH",
+    "description": "downloaded bytes do not match the recorded SHA-256, so the bytes are refused",
+    "retryable": true
+  },
+  {
+    "code": "ATTACHMENT_NOT_YET_AVAILABLE",
+    "description": "a peer's attachment is not on Storage yet; the download is queued again",
+    "retryable": true
+  },
+  {
+    "code": "ATTACHMENT_OWNER_MISSING",
+    "description": "an attachment row names an owner column the table does not carry",
+    "retryable": false
+  },
+  {
+    "code": "ATTACHMENT_PORTS_MISSING",
+    "description": "a table declares attachments but the attachment ports are unset",
+    "retryable": false
+  },
+  {
+    "code": "ATTACHMENT_ROW_GONE",
+    "description": "the row owning a queued attachment no longer exists locally",
+    "retryable": false
+  },
+  {
+    "code": "ATTACHMENT_TRANSFER_TIMEOUT",
+    "description": "an attachment transfer ran past its deadline",
+    "retryable": true
+  },
+  {
+    "code": "ATTACHMENT_UNVERIFIED",
+    "description": "a downloaded attachment has no known SHA-256 to verify its bytes against, so the bytes are refused",
+    "retryable": true
+  },
+  {
+    "code": "ATTACHMENT_UPLOAD_EXPIRED",
+    "description": "the resumable upload session expired; the upload starts again from zero",
+    "retryable": true
+  },
+  {
+    "code": "BUCKET_UNSET",
+    "description": "a pull ran before the bucket params were set",
+    "retryable": false
+  },
+  {
+    "code": "CONFIG_INVALID",
+    "description": "The engine refused its configuration: a malformed config JSON, a remote that is not an object, or an unusable attachment root.",
+    "retryable": false
+  },
+  {
+    "code": "ENGINE_UNAVAILABLE",
+    "description": "no engine can take this call on this runtime: the bridge was not created or the runtime ships no engine",
+    "retryable": false
+  },
+  {
+    "code": "JSON",
+    "description": "a payload failed to serialize or deserialize",
+    "retryable": false
+  },
+  {
+    "code": "LOCAL_CONSTRAINT",
+    "description": "A local write or a single-row read violates a constraint: a duplicate primary key, an immutable primary key in an update, a mutation id the outbox already queues, or a single()/maybeSingle() that matched the wrong number of rows.",
+    "retryable": false
+  },
+  {
+    "code": "LOCAL_UNSUPPORTED",
+    "description": "A query or write construct the local subset cannot answer: an unsupported operator or operand, a relational embed or rename, a negative limit, or an unfiltered update or delete.",
+    "retryable": false
+  },
+  {
+    "code": "MALFORMED_PUSH_RESPONSE",
+    "description": "a push response contradicts the request it answers",
+    "retryable": false
+  },
+  {
+    "code": "PERMANENT_TRANSPORT",
+    "description": "a remote fault the server definitively rejects on replay",
+    "retryable": false
+  },
+  {
+    "code": "REMOTE",
+    "description": "a transient remote or transport fault",
+    "retryable": true
+  },
+  {
+    "code": "SOFT_DELETE_VIOLATION",
+    "description": "delete refused on a soft-delete table",
+    "retryable": false
+  },
+  {
+    "code": "STORE",
+    "description": "a local store operation failed",
+    "retryable": false
+  },
+  {
+    "code": "STORE_BUSY",
+    "description": "the local store is held by another browser context; retry",
+    "retryable": true
+  },
+  {
+    "code": "STORE_UNAVAILABLE",
+    "description": "no persistent local store is available in this environment",
+    "retryable": false
+  },
+  {
+    "code": "TRANSFER",
+    "description": "an attachment transfer failed",
+    "retryable": true
+  },
+  {
+    "code": "UNKNOWN_BATCH_OFFENDER",
+    "description": "a batch abort names an offender outside the sent batch",
+    "retryable": false
+  },
+  {
+    "code": "UNKNOWN_OP",
+    "description": "an outbox row carries an op outside insert, update and delete",
+    "retryable": false
+  },
+  {
+    "code": "UNKNOWN_SIGNAL",
+    "description": "a pull or push signal type the engine does not recognize",
+    "retryable": false
+  },
+  {
+    "code": "UNKNOWN_TABLE",
+    "description": "a mutation or bucket names a table absent from config",
+    "retryable": false
+  },
+  {
+    "code": "UNKNOWN_VERDICT_REASON",
+    "description": "a verdict carries a kind or reject reason outside the closed union",
+    "retryable": false
+  },
+  {
+    "code": "VERDICT_BIJECTION",
+    "description": "the verdict list does not match the mutations it answers",
+    "retryable": false
+  }
+]

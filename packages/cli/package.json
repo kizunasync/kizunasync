@@ -1,0 +1,47 @@
+{
+  "name": "kizunasync",
+  "version": "0.2.6-alpha.1",
+  "description": "The kizunasync command line for Supabase projects: provisions the Kizuna Sync SQL pack and runs the native kizunasync binary.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kizunasync/kizunasync.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://kizunasync.com/docs/install",
+  "keywords": ["supabase", "offline-first", "local-first", "sync", "sqlite"],
+  "type": "module",
+  "bin": {
+    "kizunasync": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "pack",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "optionalDependencies": {
+      "@kizunasync/cli-darwin-arm64": "*",
+      "@kizunasync/cli-darwin-x64": "*",
+      "@kizunasync/cli-linux-x64-gnu": "*",
+      "@kizunasync/cli-linux-arm64-gnu": "*",
+      "@kizunasync/cli-win32-x64-msvc": "*"
+    }
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun test",
+    "type-check": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist pack"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "esbuild": "^0.28.2",
+    "typescript": "~7.0.2"
+  }
+}
