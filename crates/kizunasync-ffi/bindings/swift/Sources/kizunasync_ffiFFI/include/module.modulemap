@@ -1,0 +1,4 @@
+module kizunasync_ffiFFI {
+    header "kizunasync_ffiFFI.h"
+    export *
+}

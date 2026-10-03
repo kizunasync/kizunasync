@@ -1,0 +1,34 @@
+{
+  "name": "@kizunasync/protocol",
+  "version": "0.2.6-alpha.2",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Kizuna wire-protocol spec and golden conformance corpus: the single test oracle. Machine-readable JSON Schemas, canonical transcripts, validation, and executable conformance harnesses.",
+  "type": "module",
+  "exports": {
+    "./executor/executor": "./executor/executor.ts",
+    "./executor/reference": "./executor/reference.ts",
+    "./executor/scenarios": "./executor/scenarios.ts",
+    "./executor/server-contract": "./executor/server-contract.ts",
+    "./harness/canonical": "./harness/canonical.ts",
+    "./harness/load": "./harness/load.ts",
+    "./heading-slug": "./tools/heading-slug.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "check:cites": "bun tools/check-cite-authority.ts",
+    "check:decisions": "bun tools/build-decisions-index.ts && git diff --exit-code -- decisions/index.json",
+    "check:gen": "bun tools/generate-wire-types.ts && git diff --exit-code -- spec/wire-types.ts ../core/src/wire/wire-types.generated.ts",
+    "check:gen-rust": "bun tools/generate-rust-types.ts && git diff --exit-code -- ../../crates/kizunasync-protocol/src/generated.rs",
+    "check:tla": "bun tools/run-all-tla.ts",
+    "generate": "bun tools/generate-wire-types.ts",
+    "test": "bun test",
+    "type-check": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "ajv": "^8.20.0",
+    "typescript": "~7.0.2"
+  }
+}

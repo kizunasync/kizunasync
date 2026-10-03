@@ -1,0 +1,306 @@
+{
+  "case": "push/008-composite-key-writes",
+  "cites": [
+    "D-row-key",
+    "P:mutations-and-column-masked-conflict-resolution",
+    "P:keyset-pagination-and-delivery-bound"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "seats is a read-write table keyed by the pair (hall bigint, seat integer) (D-row-key), so its pk is the JSON array of the two decimal texts, spelled the way Postgres prints jsonb: [\"1\", \"12\"].",
+      "the insert names its key columns in columns, and they spell the pk, so it applies; the update names only a column outside the key; the delete targets the row by the same pk.",
+      "the step-6 pull delivers the row under its composite pk and grants owner user-a, so the step-10 pull carries the tombstone the pushed delete left, under the same pk."
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "seats": {
+          "bucket_column": "owner_id",
+          "key_columns": [
+            "hall",
+            "seat"
+          ]
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "[\"1\", \"12\"]",
+      "row": null,
+      "table": "seats"
+    }
+  ],
+  "priority": "P0",
+  "status": "decided",
+  "steps": [
+    {
+      "columns": {
+        "hall": 1,
+        "holder": "ada",
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "seat": 12
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000001",
+      "n": 1,
+      "op": "insert",
+      "pk": "[\"1\", \"12\"]",
+      "table": "seats"
+    },
+    {
+      "columns": {
+        "holder": "grace"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000002",
+      "n": 2,
+      "op": "update",
+      "pk": "[\"1\", \"12\"]",
+      "table": "seats"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 2
+        },
+        {
+          "check": "local-row",
+          "pk": "[\"1\", \"12\"]",
+          "row": {
+            "hall": 1,
+            "holder": "grace",
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "seat": 12
+          },
+          "table": "seats"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "hall": 1,
+                "holder": "ada",
+                "owner_id": "00000000-0000-4000-8000-a10000000001",
+                "seat": 12
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000001",
+              "op": "insert",
+              "pk": "[\"1\", \"12\"]",
+              "table": "seats"
+            },
+            {
+              "columns": {
+                "holder": "grace"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000002",
+              "op": "update",
+              "pk": "[\"1\", \"12\"]",
+              "table": "seats"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000001",
+            "verdict": "applied"
+          },
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000002",
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "seats"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "[\"1\", \"12\"]",
+            "row": {
+              "hall": 1,
+              "holder": "grace",
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "seat": 12
+            },
+            "seq": "2",
+            "table": "seats"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        },
+        {
+          "check": "local-row",
+          "pk": "[\"1\", \"12\"]",
+          "row": {
+            "hall": 1,
+            "holder": "grace",
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "seat": 12
+          },
+          "table": "seats"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    },
+    {
+      "columns": {},
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000003",
+      "n": 8,
+      "op": "delete",
+      "pk": "[\"1\", \"12\"]",
+      "table": "seats"
+    },
+    {
+      "kind": "rpc",
+      "n": 9,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {},
+              "mutation_id": "00000000-0000-4000-8000-f10000000003",
+              "op": "delete",
+              "pk": "[\"1\", \"12\"]",
+              "table": "seats"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": "00000000-0000-4000-8000-f10000000002",
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000003",
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "kind": "rpc",
+      "n": 10,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "seats"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "2",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [],
+        "signal": null,
+        "tombstones": [
+          {
+            "deleted_at": "2026-01-01T00:00:09.000Z",
+            "pk": "[\"1\", \"12\"]",
+            "seq": "3",
+            "table": "seats"
+          }
+        ]
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "outbox-depth",
+          "value": 0
+        },
+        {
+          "check": "local-row",
+          "pk": "[\"1\", \"12\"]",
+          "row": null,
+          "table": "seats"
+        }
+      ],
+      "kind": "assert",
+      "n": 11
+    }
+  ],
+  "title": "a composite-key table: insert, update of a non-key column, and delete travel under the JSON array pk"
+}

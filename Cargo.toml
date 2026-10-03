@@ -1,0 +1,94 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/kizunasync-protocol",
+  "crates/kizunasync-query",
+  "crates/kizunasync-store",
+  "crates/kizunasync-transfer",
+  "crates/kizunasync-engine",
+  "crates/kizunasync-remote-http",
+  "crates/kizunasync-conformance",
+  "crates/kizunasync-ffi",
+  "crates/kizunasync-napi",
+  "crates/kizunasync-bindgen",
+  "crates/kizunasync-cli",
+  "crates/kizunasync-wasm",
+]
+default-members = [
+  "crates/kizunasync-protocol",
+  "crates/kizunasync-query",
+  "crates/kizunasync-store",
+  "crates/kizunasync-transfer",
+  "crates/kizunasync-engine",
+  "crates/kizunasync-conformance",
+  "crates/kizunasync-ffi",
+]
+
+# Turborepo identity for experimental Cargo workspace discovery
+# (https://turborepo.dev/docs/guides/tools/rust). `kizunasync` is the npm CLI shim;
+# this name is the Cargo workspace package. Filter with `--filter=kizunasync-cargo`.
+[workspace.metadata]
+name = "kizunasync-cargo"
+
+[workspace.package]
+edition = "2024"
+license = "Apache-2.0"
+version = "0.2.6-alpha.2"
+rust-version = "1.90"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+tokio = { version = "1", default-features = false, features = ["sync", "macros", "io-util", "rt", "time"] }
+async-trait = "0.1"
+regex = "1"
+sha2 = "0.10"
+hex = "0.4"
+tempfile = "3"
+# Live HTTP for the Supabase RPC + Storage/TUS adapters: ecosystem-standard client, rustls only (no OpenSSL toolchain).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+[workspace.lints.rust]
+# Edition 2024 default; kept explicit so a downgrade cannot silently relax FFI unsafe hygiene.
+unsafe_op_in_unsafe_fn = "warn"
+# CONVENTIONS.md Rust: rustdoc for public items is mandatory for exported API.
+missing_docs = "warn"
+
+# CONVENTIONS.md Rust: deny unwrap/expect/panic on library crates (tests may allow),
+# pedantic as warn so rust-analyzer surfaces debt without blocking `-D warnings` CI.
+[workspace.lints.clippy]
+# Negative priority so the per-lint entries below win over the group.
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
+[profile.dev]
+debug = 1
+
+# Keeps overflow checks on in release builds so an integer overflow aborts instead of wrapping silently.
+[profile.release]
+overflow-checks = true
+
+# Proc macros and build scripts are host dylibs that rustc loads with dlopen. The
+# release default `strip = "debuginfo"` runs Apple's strip over them, and the
+# current macOS dyld refuses the result ("mis-aligned LINKEDIT string pool"), so
+# every cross-target release build fails with E0463. Host-side units stay unstripped.
+[profile.release.build-override]
+strip = "none"
+
+# Mobile/embedder artifacts: smallest cdylib/staticlib without a debug-build penalty.
+[profile.release-size]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+# Release optimizations plus debug assertions, for catching invariant violations that only reproduce under release-level codegen.
+[profile.release-assertions]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true

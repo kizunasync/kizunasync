@@ -1,0 +1,293 @@
+name: release-npm
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: >
+          Version to release, without the leading 'v'. Must match an
+          existing tag named 'v<version>'.
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >
+          Version you want to release, without the leading 'v'. Input
+          should match an existing tag named 'v<version>'.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-npm-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.2
+
+jobs:
+  binaries:
+    name: binaries · ${{ matrix.triple }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: darwin-arm64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            napi: libkizunasync_napi.dylib
+            cli: kizunasync
+          - triple: darwin-x64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            napi: libkizunasync_napi.dylib
+            cli: kizunasync
+          - triple: linux-x64-gnu
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            napi: libkizunasync_napi.so
+            cli: kizunasync
+          - triple: linux-arm64-gnu
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            napi: libkizunasync_napi.so
+            cli: kizunasync
+          - triple: win32-x64-msvc
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            napi: kizunasync_napi.dll
+            cli: kizunasync.exe
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-release-${{ matrix.triple }}
+          cache-on-failure: true
+
+      - name: Install Linux build inputs
+        if: runner.os == 'Linux'
+        run: >
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends pkg-config cmake
+
+      - name: Build NAPI library
+        run: >
+          cargo build --release -p kizunasync-napi --target ${{ matrix.target }}
+
+      - name: Build CLI (with vendored dbus)
+        run: >
+          cargo build --release -p kizunasync-cli --features vendored-dbus --target ${{ matrix.target }}
+
+      - name: Collect produced binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/binaries/${{ matrix.triple }}
+          cp target/${{ matrix.target }}/release/${{ matrix.napi }} dist/binaries/${{ matrix.triple }}/${{ matrix.napi }}
+          cp target/${{ matrix.target }}/release/${{ matrix.cli }} dist/binaries/${{ matrix.triple }}/${{ matrix.cli }}
+          test -f dist/binaries/${{ matrix.triple }}/${{ matrix.napi }}
+          test -f dist/binaries/${{ matrix.triple }}/${{ matrix.cli }}
+          for f in "${{ matrix.napi }}" "${{ matrix.cli }}"; do
+            size=$(wc -c < "dist/binaries/${{ matrix.triple }}/$f")
+            if [ "$size" -lt 100000 ]; then
+              echo "error: dist/binaries/${{ matrix.triple }}/$f is ${size} bytes (< 100000)" >&2
+              exit 1
+            fi
+          done
+          ls -la dist/binaries/${{ matrix.triple }}
+
+      - name: Upload binaries as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-binaries-${{ matrix.triple }}
+          path: dist/binaries/${{ matrix.triple }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: publish · npm
+    needs: binaries
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      id-token: write
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Resolve release version
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="$VERSION_INPUT"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "error: version '$VERSION' does not match X.Y.Z or X.Y.Z-prerelease" >&2
+            exit 1
+          fi
+          CARGO_VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" != "$CARGO_VERSION" ]]; then
+            echo "error: tag version '$VERSION' does not match root Cargo.toml [workspace.package].version '$CARGO_VERSION'" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "error: tag version '$VERSION' does not match root package.json version '$PACKAGE_VERSION'" >&2
+            exit 1
+          fi
+          NPM_TAG="latest"
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE="${VERSION#*-}"
+            NPM_TAG="${PRERELEASE%%.*}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "NPM_TAG=$NPM_TAG" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install all workspace dependencies (bun)
+        run: bun install --frozen-lockfile
+
+      - name: Download all platform binaries
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: npm-binaries-*
+          path: dist/binaries
+          merge-multiple: false
+
+      - name: Organize binaries by target platform
+        run: |
+          set -euo pipefail
+          for dir in dist/binaries/npm-binaries-*; do
+            triple="$(basename "$dir" | sed 's/^npm-binaries-//')"
+            mkdir -p "dist/binaries/$triple"
+            mv "$dir"/* "dist/binaries/$triple/"
+            rmdir "$dir"
+          done
+          find dist/binaries -maxdepth 2 | sort
+
+      - name: Cache cargo (for wasm-bindgen CLI)
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-wasm
+          cache-on-failure: true
+
+      - uses: ./.github/actions/wasm-toolchain
+
+      - name: Build WASM (bun)
+        run: bun run cargo:wasm
+
+      - name: Build packages
+        run: >
+          bun run turbo run build
+          --filter=@kizunasync/core
+          --filter=@kizunasync/supabase
+          --filter=@kizunasync/web
+          --filter=@kizunasync/react
+          --filter=@kizunasync/vue
+          --filter=@kizunasync/expo
+          --filter=@kizunasync/rn-uniffi
+          --filter=kizunasync
+
+      - name: Prepare npm release package
+        run: >
+          bun scripts/prepare-npm-release.ts "$VERSION" --binaries dist/binaries
+
+      - name: Install npm 11.20.0 for OIDC support
+        run: npm install -g npm@11.20.0
+
+      - name: Publish all packages to npm
+        working-directory: dist/npm
+        run: |
+          set -euo pipefail
+          while read -r dir; do
+            [ -n "$dir" ] || continue
+            tag="$NPM_TAG"
+            if [ "$tag" != "latest" ]; then
+              pkg_name="$(node -p "require('./$dir/package.json').name")"
+              view_status=0
+              versions_json="$(npm view "$pkg_name" versions --json 2>/dev/null)" || view_status=$?
+              if [ "$view_status" -ne 0 ]; then
+                # E404 covers a never-published name and one whose every version was unpublished.
+                if ! printf '%s\n' "$versions_json" | grep -q '"code": *"E404"'; then
+                  printf 'npm view %s failed:\n%s\n' "$pkg_name" "$versions_json" >&2
+                  exit "$view_status"
+                fi
+                versions_json=""
+              fi
+              if [ -z "$versions_json" ]; then
+                tag="latest"
+              else
+                has_stable="$(VERSIONS_JSON="$versions_json" node -e "
+                  const versions = JSON.parse(process.env.VERSIONS_JSON)
+                  const list = Array.isArray(versions) ? versions : [versions]
+                  process.stdout.write(list.some((v) => !v.includes('-')) ? 'yes' : 'no')
+                ")"
+                if [ "$has_stable" != "yes" ]; then
+                  tag="latest"
+                fi
+              fi
+            fi
+            set +e
+            output="$(npm publish "./$dir" --access public --tag "$tag" 2>&1)"
+            status=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$status" -ne 0 ]; then
+              if printf '%s\n' "$output" | grep -q 'cannot publish over the previously published versions'; then
+                echo "already on the registry, continuing: $dir"
+                continue
+              fi
+              exit "$status"
+            fi
+          done < publish-order.txt
+
+      - name: Attach CLI executables to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release
+          cp dist/binaries/darwin-arm64/kizunasync "dist/release/kizunasync-$VERSION-darwin-arm64"
+          cp dist/binaries/darwin-x64/kizunasync "dist/release/kizunasync-$VERSION-darwin-x64"
+          cp dist/binaries/linux-x64-gnu/kizunasync "dist/release/kizunasync-$VERSION-linux-x64-gnu"
+          cp dist/binaries/linux-arm64-gnu/kizunasync "dist/release/kizunasync-$VERSION-linux-arm64-gnu"
+          cp dist/binaries/win32-x64-msvc/kizunasync.exe "dist/release/kizunasync-$VERSION-win32-x64-msvc.exe"
+          PRERELEASE_FLAG=""
+          if [[ "$VERSION" == 0.* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release view "v$VERSION" >/dev/null 2>&1 ||
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes $PRERELEASE_FLAG
+          gh release upload "v$VERSION" dist/release/* --clobber
+
+      - name: Upload prepared npm packages as artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: npm-staged
+          path: dist/npm
+          retention-days: 14
+     

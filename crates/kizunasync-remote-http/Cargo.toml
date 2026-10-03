@@ -1,0 +1,26 @@
+[package]
+name = "kizunasync-remote-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Live HTTP adapters: Supabase RPC ProtocolRemote and Storage/TUS Transfer"
+publish = false
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+kizunasync-protocol = { path = "../kizunasync-protocol" }
+kizunasync-engine = { path = "../kizunasync-engine" }
+kizunasync-transfer = { path = "../kizunasync-transfer" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }
+# Per-test directories for the TUS tests, so parallel workspace runs never race on a shared temp path.
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

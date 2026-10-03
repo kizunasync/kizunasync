@@ -1,0 +1,104 @@
+{
+  "enums": [
+    {
+      "members": [
+        "delete",
+        "insert",
+        "update"
+      ],
+      "name": "EOp",
+      "tsName": "TOp",
+      "verify": [
+        {
+          "file": "common.schema.json",
+          "pointer": "/$defs/mutation/properties/op/enum"
+        }
+      ]
+    },
+    {
+      "members": [
+        "CHECKPOINT_EXPIRED",
+        "RESET_REQUIRED"
+      ],
+      "name": "ESignalType",
+      "tsName": "TSignalType",
+      "verify": [
+        {
+          "file": "common.schema.json",
+          "pointer": "/$defs/signal/oneOf/1/properties/type/enum"
+        }
+      ]
+    },
+    {
+      "members": [
+        "COLUMN_DENIED",
+        "CONSTRAINT",
+        "DELETE_WINS",
+        "PRECONDITION",
+        "RLS_DENIED",
+        "SUPERSEDED"
+      ],
+      "name": "ERejectReason",
+      "tsName": "TRejectReason",
+      "verify": [
+        {
+          "file": "common.schema.json",
+          "pointer": "/$defs/verdict/oneOf/1/properties/reason/enum"
+        },
+        {
+          "file": "push-response.schema.json",
+          "pointer": "/oneOf/1/properties/batch/properties/reason/enum"
+        }
+      ]
+    },
+    {
+      "members": [
+        "applied",
+        "rejected"
+      ],
+      "name": "EVerdictKind",
+      "tsName": "TVerdictKind",
+      "verify": [
+        {
+          "file": "common.schema.json",
+          "pointer": "/$defs/verdict/oneOf/0/properties/verdict/const"
+        },
+        {
+          "file": "common.schema.json",
+          "pointer": "/$defs/verdict/oneOf/1/properties/verdict/const"
+        }
+      ]
+    },
+    {
+      "members": [
+        "aborted"
+      ],
+      "name": "EBatchOutcome",
+      "tsName": "TBatchOutcome",
+      "verify": [
+        {
+          "file": "push-response.schema.json",
+          "pointer": "/oneOf/1/properties/batch/properties/outcome/const"
+        }
+      ]
+    },
+    {
+      "members": [
+        "arrival",
+        "hlc"
+      ],
+      "name": "EConflictMode",
+      "tsName": "TConflictMode",
+      "verify": [
+        {
+          "file": "pull-response.schema.json",
+          "pointer": "/properties/conflicts/items/properties/conflict_mode/enum"
+        },
+        {
+          "file": "transcript.schema.json",
+          "pointer": "/$defs/context/properties/server/properties/tables/additionalProperties/properties/conflict_mode/enum"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+Report pack state, synced tables, columns, clients, and exposed-schema config
+
+Usage: kizunasync status [OPTIONS]
+
+Options:
+      --json
+          Print one JSON object on stdout instead of the human report
+
+  -v, --version
+          Print the version and exit
+
+      --format <FORMAT>
+          Output shape: json (stdout, same as --json) or text (stderr, no Clack)
+
+          Possible values:
+          - json: One JSON object on stdout (same payload as --json)
+          - text: Compact labelled lines on stderr, even on a TTY
+
+      --no-color
+          Never emit ANSI colour (also honoured: NO_COLOR)
+
+  -q, --quiet
+          Print only the pack state on stdout (docker-cli -q)
+
+      --workdir <PATH>
+          Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+
+      --db-url <URL>
+          Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+
+      --project-ref <REF>
+          Drive the Supabase Management API against this project instead
+
+      --access-token <TOKEN>
+          Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+
+  -h, --help
+          Print help (see a summary with '-h')

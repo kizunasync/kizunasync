@@ -1,0 +1,17 @@
+List, run, and reschedule the pack's background jobs
+
+Usage: kizunasync jobs [OPTIONS] <COMMAND>
+
+Commands:
+  list      Schedule, last run, and drift against kizunasync._settings
+  run       Run a retention job now, over this connection
+  schedule  Reschedule the three jobs from kizunasync._settings
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+      --json            Print one JSON object on stdout instead of the human report
+  -v, --version         Print the version and exit
+      --db-url <URL>    Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+      --no-color        Never emit ANSI colour (also honoured: NO_COLOR)
+      --workdir <PATH>  Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+  -h, --help            Print help

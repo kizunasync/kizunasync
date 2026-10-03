@@ -1,0 +1,16 @@
+[package]
+name = "kizunasync-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Wire types and cursor codec for Kizuna (mirrors packages/protocol schemas)"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

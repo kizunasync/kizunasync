@@ -1,0 +1,5 @@
+.build/
+.swiftpm/
+*.xcframework/
+*.zip
+Package.resolved

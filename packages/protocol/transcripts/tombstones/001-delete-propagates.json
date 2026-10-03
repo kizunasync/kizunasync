@@ -1,0 +1,170 @@
+{
+  "case": "tombstones/001-delete-propagates",
+  "cites": [
+    "P:mutations-and-column-masked-conflict-resolution",
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "SQL:tombstone-trigger"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the AFTER DELETE trigger writes a tombstone (P:mutations-and-column-masked-conflict-resolution Tombstone; SQL:tombstone-trigger) and pull delivers tombstones since cursor (P:cursor-monotonicity-rebase-and-atomic-checkpoints)",
+      "the tombstone seq '2' comes from the same one global sequence as row changes (SQL:tombstones-seq; P:session-guarantees-and-exactly-once-effect mechanism 1); deleted_at uses the Logical timestamp grammar",
+      "applying the tombstone removes the local row inside the same atomic checkpoint commit (P:session-guarantees-and-exactly-once-effect item 2)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "2"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": null,
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "doomed row"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "doomed row"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "doomed row"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "kind": "server",
+      "n": 4,
+      "op": "delete",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 5,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "signal": null,
+        "tombstones": [
+          {
+            "deleted_at": "2026-01-01T00:00:04.000Z",
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "seq": "2",
+            "table": "todos"
+          }
+        ]
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 6
+    }
+  ],
+  "title": "server delete propagates: the tombstone rides pull and removes the local row"
+}

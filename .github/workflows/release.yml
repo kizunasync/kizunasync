@@ -1,0 +1,106 @@
+# Kizuna Sync: release pipeline.
+#
+# A `v*` tag push runs the full CI/CD gauntlet before anything publishes:
+# the tag must be reachable from `main`, then ci.yml and rust-ci.yml run
+# every job (full: true, including macOS/Windows packaging). The Swift and
+# Kotlin releases publish next, and npm follows them because
+# @kizunasync/rn-uniffi resolves the engine from both at the same version.
+# The public demo and the website redeploy last. No other workflow publishes
+# or deploys on a push.
+# For more on hosting/deployment, see docs/operations/ci-cd.md
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: guard · tag reachable from main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: tagged commit must be reachable from origin/main
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME at $GITHUB_SHA is not reachable from origin/main; refusing to release an unmerged commit."
+            exit 1
+          fi
+
+      - name: resolve release version from the tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  ci:
+    name: ci · full
+    needs: guard
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+    secrets: inherit
+
+  rust-ci:
+    name: rust-ci · full
+    needs: guard
+    # A called workflow cannot ask for more than its caller grants, and rust-ci's change filter reads pull requests.
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/rust-ci.yml
+    with:
+      full: true
+    secrets: inherit
+
+  release-npm:
+    name: release-npm
+    needs: [guard, ci, rust-ci, release-swift, release-kotlin]
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/release-npm.yml
+    with:
+      version: ${{ needs.guard.outputs.version }}
+    secrets: inherit
+
+  release-swift:
+    name: release-swift
+    needs: [guard, ci, rust-ci]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-swift.yml
+    with:
+      version: ${{ needs.guard.outputs.version }}
+    secrets: inherit
+
+  release-kotlin:
+    name: release-kotlin
+    needs: [guard, ci, rust-ci]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-kotlin.yml
+    with:
+      version: ${{ needs.guard.outputs.version }}
+    secrets: inherit
+
+  deploy-demo:
+    name: deploy-demo
+    needs: [release-npm, release-swift, release-kotlin]
+    uses: ./.github/workflows/deploy-demo.yml
+    secrets: inherit
+
+  deploy-website:
+    name: deploy-website
+    needs: [release-npm, release-swift, release-kotlin]
+    uses: ./.github/workflows/deploy-website.yml
+    secrets: inherit

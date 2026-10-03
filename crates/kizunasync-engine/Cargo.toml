@@ -1,0 +1,37 @@
+[package]
+name = "kizunasync-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Kizuna sync engine (apply, pull, push, query)"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+kizunasync-protocol = { path = "../kizunasync-protocol" }
+kizunasync-store = { path = "../kizunasync-store" }
+kizunasync-query = { path = "../kizunasync-query" }
+kizunasync-transfer = { path = "../kizunasync-transfer" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# platform::wasm needs Date.now(); uuid's "js" feature routes UUID v4 through WebCrypto instead of getrandom on this target.
+js-sys = "0.3"
+uuid = { workspace = true, features = ["js"] }
+
+[dev-dependencies]
+# Fault injection: the atomicity tests install a SQLite trigger that aborts one
+# statement mid-reconcile, which needs raw SQL against the engine's database.
+rusqlite = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `FakeTransfer` for the attachment-queue and attachment-missing-bytes tests.
+kizunasync-transfer = { path = "../kizunasync-transfer", features = ["test-support"] }
+
+[lints]
+workspace = true

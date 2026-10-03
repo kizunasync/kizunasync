@@ -1,0 +1,16 @@
+Marker-scoped write churn for fencing and load testing
+
+Usage: kizunasync mock churn [OPTIONS]
+
+Options:
+      --table <NAME>               Target table (else the lone table in kizunasync._config)
+  -v, --version                    Print the version and exit
+      --iterations <ITERATIONS>    How many write statements to run [default: 25]
+      --no-color                   Never emit ANSI colour (also honoured: NO_COLOR)
+      --interval-ms <INTERVAL_MS>  Milliseconds between writes; 0 disables pacing [default: 200]
+      --workdir <PATH>             Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+      --seed <SEED>                PRNG seed, the same seed reproduces the same plan [default: 1]
+      --dry-run                    Print the statements and change nothing (needs no database when --table is given)
+      --yes                        Apply without asking (else KSYNC_ALLOW_MOCK_SEED=1)
+      --db-url <URL>               Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+  -h, --help                       Print help

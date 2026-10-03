@@ -1,0 +1,79 @@
+{
+  "case": "lifecycle/004-soft-delete-violation",
+  "cites": [
+    "P:outbox-and-serial-in-flight"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "todos declares a soft-delete column (D-corpus-soft-delete-and-refusal context grammar): the app marks a row deleted by writing that column, so a hard delete would send a tombstone the table's own model does not admit",
+      "the row is inserted first, so the refusal is measured against a LIVE row and a NON-EMPTY outbox: the engine refuses op:'delete' with the local error SOFT_DELETE_VIOLATION before anything is written (P:outbox-and-serial-in-flight: the row and its outbox entry are one transaction, so a refusal leaves neither)",
+      "after the refusal the row is still readable and the outbox still holds exactly the insert: a client that hard-deletes fails the local-row check and a client that queues the delete fails the outbox-depth check"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id",
+          "soft_delete_column": "deleted_at"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "outbox-depth",
+      "value": 1
+    }
+  ],
+  "priority": "P1",
+  "status": "normative",
+  "steps": [
+    {
+      "columns": {
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "works on a plane"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000001",
+      "n": 1,
+      "op": "insert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "columns": {},
+      "expect_error": "SOFT_DELETE_VIOLATION",
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000002",
+      "n": 2,
+      "op": "delete",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 1
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "works on a plane"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    }
+  ],
+  "title": "delete on a soft-delete table: refused locally, nothing queued"
+}

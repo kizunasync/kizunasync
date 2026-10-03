@@ -1,0 +1,80 @@
+# This action sets up the full toolchain for building WebAssembly (wasm)
+# targets. It provides:
+#
+# - The Rust wasm32 target,
+# - A wasm-capable clang required for sqlite-wasm-rs,
+# - binaryen for wasm-opt,
+# - and a version-locked wasm-bindgen CLI from Cargo.lock.
+#
+# This toolchain is shared across workflows:
+# - `rust-ci.yml`: wasm-build and browser-conformance jobs,
+# - `ci.yml`: quality and db-tests jobs,
+# - `release-npm.yml`: the publish job.
+#
+# Worker scripts are git-ignored; Vite handles bundling of
+# `packages/web/src/worker.ts`, and @kizunasync/web publishes
+# the bundle together with its source.
+
+name: wasm toolchain
+description: Install Rust wasm32 target, clang, binaryen, and Cargo.lock-matched wasm-bindgen CLI.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      with:
+        toolchain: stable
+        targets: wasm32-unknown-unknown
+
+    # sqlite-wasm-rs needs a clang with WebAssembly support.
+    # Ubuntu clang/LLVM ships this by default; Apple's does not.
+    - name: Install clang
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang
+
+    # Ubuntu 22.04's binaryen is outdated and lacks wasm features emitted
+    # by rustc 1.82+, so we install a newer pinned version, not from apt.
+    - name: Install binaryen (pinned)
+      shell: bash
+      env:
+        BINARYEN_VERSION: version_124
+        BINARYEN_SHA256: 0290c3779fedf592b8da0ded3032ff55c41a2b7bfa2d6bf7b7bac6f0e6e28963
+      run: |
+        set -euo pipefail
+        archive="binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz"
+        url="https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/${archive}"
+        curl -sSL --retry 3 -o "$archive" "$url"
+        echo "${BINARYEN_SHA256}  ${archive}" | sha256sum -c -
+        install_dir="$HOME/.local/binaryen"
+        mkdir -p "$install_dir"
+        tar -xzf "$archive" -C "$install_dir"
+        rm "$archive"
+        echo "$install_dir/binaryen-${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+
+    # To avoid mismatches between CLI and crate, the wasm-bindgen version must
+    # match Cargo.lock exactly. We extract the version from Cargo.lock and
+    # install it, which is also cache-friendly with rust-cache.
+    - name: Install wasm-bindgen CLI pinned to Cargo.lock
+      shell: bash
+      run: |
+        set -euo pipefail
+        version="$(awk '/^\[\[package\]\]/ { found = 0 } /^name = "wasm-bindgen"$/ { found = 1; next } found && /^version = / { gsub(/"/, "", $3); print $3; exit }' Cargo.lock)"
+        if [ -z "$version" ]; then
+          echo "::error::Cargo.lock declares no wasm-bindgen package"
+          exit 1
+        fi
+        echo "wasm-bindgen pinned to $version by Cargo.lock"
+        cargo install wasm-bindgen-cli --version "$version" --locked
+
+    # cc-rs uses this variable to find the right clang for the wasm target.
+    - name: Export CC_wasm32_unknown_unknown
+      shell: bash
+      run: echo "CC_wasm32_unknown_unknown=clang" >> "$GITHUB_ENV"
+
+    # sqlite-wasm-rs expects C23-style attributes, but clang on Ubuntu defaults
+    # to gnu17, which doesn't allow them. Setting -std=gnu2x enables C23 mode
+    # (gnu2x is recognized by Clang 14+).
+    - name: Export CFLAGS_wasm32_unknown_unknown
+      shell: bash
+      run: echo "CFLAGS_wasm32_unknown_unknown=-std=gnu2x" >> "$GITHUB_ENV"

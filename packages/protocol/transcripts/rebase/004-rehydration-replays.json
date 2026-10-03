@@ -1,0 +1,209 @@
+{
+  "case": "rebase/004-rehydration-replays",
+  "cites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "P:mutations-and-column-masked-conflict-resolution",
+    "SQL:tombstone-reaping"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "pre-transcript history, elided: seq 1 inserted e1 (client checkpointed at cursor 1 with a pending insert of e3); seq 2 deleted e1 and that tombstone has since been reaped; seq 3 inserted e2",
+      "the step-2 pull at cursor 1 predates the oldest retained tombstone ⇒ CHECKPOINT_EXPIRED; the pending insert stays queued",
+      "D-outbox-rebase: re-hydration snapshot-replaces local state then FIFO-replays the outbox, so the local insert of e3 survives the wipe (rebase/004)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 1
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": null,
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "created while the client was offline"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "typed while the checkpoint expired"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "typed while the checkpoint expired"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000013",
+      "n": 1,
+      "op": "insert",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [],
+        "signal": {
+          "type": "CHECKPOINT_EXPIRED"
+        },
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "event",
+          "event": "CHECKPOINT_EXPIRED"
+        },
+        {
+          "check": "outbox-depth",
+          "value": 1
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000003",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "typed while the checkpoint expired"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000002",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "created while the client was offline"
+            },
+            "seq": "3",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "outbox-depth",
+          "value": 1
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "created while the client was offline"
+          },
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000003",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "typed while the checkpoint expired"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    }
+  ],
+  "title": "expired checkpoint: snapshot replace then replay keeps a pending insert"
+}

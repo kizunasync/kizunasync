@@ -1,0 +1,15 @@
+Verify the project: synced tables, supabase dir, provisioned state
+
+Usage: kizunasync doctor [OPTIONS]
+
+Options:
+      --ci                     Emit one JSON line per check and exit non-zero on any failure
+  -v, --version                Print the version and exit
+      --no-color               Never emit ANSI colour (also honoured: NO_COLOR)
+      --url <URL>              Project URL for the live Data API probe (else SUPABASE_URL and its NEXT_PUBLIC_/VITE_/EXPO_PUBLIC_/PUBLIC_ forms, the .env files, then the linked project)
+      --publishable-key <KEY>  Publishable key for the live probe (else SUPABASE_PUBLISHABLE_KEY and its aliases, the .env files, then the linked project's Management API keys) [alias: --anon-key]
+      --workdir <PATH>         Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+      --db-url <URL>           Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+      --project-ref <REF>      Drive the Supabase Management API against this project instead
+      --access-token <TOKEN>   Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+  -h, --help                   Print help

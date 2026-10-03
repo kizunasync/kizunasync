@@ -1,0 +1,242 @@
+{
+  "case": "rebase/003-tombstone-does-not-resurrect",
+  "cites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "P:mutations-and-column-masked-conflict-resolution",
+    "P:verdict-completeness-transforms-and-conflict-rejection"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "D-outbox-rebase rebase: a pulled tombstone commits even with a pending local update; replay does not resurrect the row",
+      "the outbox entry remains and the later push returns DELETE_WINS (P:mutations-and-column-masked-conflict-resolution)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "2"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": null,
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "shared then deleted"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "shared then deleted"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "shared then deleted"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "columns": {
+        "title": "pending while deleted"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000012",
+      "n": 4,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "kind": "server",
+      "n": 5,
+      "op": "delete",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "2",
+        "has_more": false,
+        "rows": [],
+        "signal": null,
+        "tombstones": [
+          {
+            "deleted_at": "2026-01-01T00:00:05.000Z",
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "seq": "2",
+            "table": "todos"
+          }
+        ]
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "2"
+        },
+        {
+          "check": "outbox-depth",
+          "value": 1
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    },
+    {
+      "kind": "rpc",
+      "n": 8,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "title": "pending while deleted"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000012",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000012",
+            "reason": "DELETE_WINS",
+            "server_row": null,
+            "verdict": "rejected"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        },
+        {
+          "check": "event",
+          "event": "MUTATION_REJECTED"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 9
+    }
+  ],
+  "title": "pulled tombstone plus pending update does not resurrect; later DELETE_WINS"
+}

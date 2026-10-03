@@ -1,0 +1,67 @@
+{
+  "cites": [
+    "SQL:config-bucket-column",
+    "P:mutations-and-column-masked-conflict-resolution",
+    "SQL:config-key-columns",
+    "D-row-key"
+  ],
+  "notes": [
+    "Fixture domain for the conformance corpus. Invariant I-6: every table and column referenced anywhere in the corpus must exist here.",
+    "Negative contract (P:attachments-are-out-of-protocol-scope, AT:media-attachments): the domain deliberately has no attachment columns, attachment bytes never ride the row channel, and the seed exercises no attachment_id references.",
+    "bucket_column mirrors kizunasync._config.bucket_column (SQL:config-bucket-column): the declared, indexed owner column (scope: owner/tenant equality, P:mutations-and-column-masked-conflict-resolution Bucket).",
+    "key_columns mirrors kizunasync._config.key_columns (SQL:config-key-columns): the table's primary-key columns in order, whose text is every pk the corpus carries for the table (D-row-key). notices is keyed by one bigint and seats by a (bigint, integer) pair."
+  ],
+  "tables": {
+    "notices": {
+      "bucket_column": "owner_id",
+      "columns": {
+        "body": "text",
+        "id": "bigint",
+        "owner_id": "uuid"
+      },
+      "key_columns": [
+        "id"
+      ]
+    },
+    "seats": {
+      "bucket_column": "owner_id",
+      "columns": {
+        "hall": "bigint",
+        "holder": "text",
+        "owner_id": "uuid",
+        "seat": "integer"
+      },
+      "key_columns": [
+        "hall",
+        "seat"
+      ]
+    },
+    "tags": {
+      "bucket_column": "owner_id",
+      "columns": {
+        "id": "uuid",
+        "label": "text",
+        "owner_id": "uuid"
+      },
+      "key_columns": [
+        "id"
+      ]
+    },
+    "todos": {
+      "bucket_column": "owner_id",
+      "columns": {
+        "deleted_at": "timestamptz",
+        "done": "boolean",
+        "id": "uuid",
+        "labels": "text[]",
+        "likes": "integer",
+        "owner_id": "uuid",
+        "title": "text",
+        "version": "integer"
+      },
+      "key_columns": [
+        "id"
+      ]
+    }
+  }
+}

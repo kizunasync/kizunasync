@@ -1,0 +1,202 @@
+{
+  "case": "conflict/004-journal-on-winning-pull",
+  "cites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "P:session-guarantees-and-exactly-once-effect",
+    "P:verdict-completeness-transforms-and-conflict-rejection"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "D-conflict-journal-visibility: with conflictJournal on, the winning pull page includes optional conflicts for the overwritten title; omitted when the journal is off (conflict/002)."
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id",
+          "conflict_journal": true
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "device-a title"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "start"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "start"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "title": "device-b title"
+      },
+      "kind": "server",
+      "n": 3,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "columns": {
+        "title": "device-a title"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000013",
+      "n": 4,
+      "op": "update",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 5,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "title": "device-a title"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000013",
+              "op": "update",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000013",
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "conflicts": [
+          {
+            "column_name": "title",
+            "conflict_mode": "arrival",
+            "loser_value": "device-b title",
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "table": "todos",
+            "winner_mutation_id": "00000000-0000-4000-8000-f10000000013",
+            "winner_seq": "3"
+          }
+        ],
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "device-a title"
+            },
+            "seq": "3",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    }
+  ],
+  "title": "winning pull attaches conflict journal losers when conflictJournal is on"
+}

@@ -1,0 +1,93 @@
+{
+  "$id": "https://schemas.kizunasync.dev/push-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "kizunaCites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "SQL:push-request-shape"
+  ],
+  "kizunaNote": "PostgREST RPC body for kizunasync.push: top-level keys are SQL argument names. Client identity rides the optional client_id key (D-client-identity), with the Supabase Auth JWT session_id claim as the fallback when it is absent.",
+  "kizunaStatus": "normative",
+  "properties": {
+    "batch": {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "SQL:push-request-shape"
+      ],
+      "kizunaNote": "One server transaction per batch; idempotent via mutation UUIDs (P:verdict-completeness-transforms-and-conflict-rejection). Batch and mutation key spellings are this schema.",
+      "kizunaStatus": "proposed",
+      "properties": {
+        "atomic": {
+          "kizunaCites": [
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "Headline semantics are normative (P:verdict-completeness-transforms-and-conflict-rejection): flagged means all-or-nothing and one rejection reverts the batch; unflagged returns per-mutation verdicts. D-atomic-batch-abort decided the abort response details, and executable push/005 pins the selected atomic outcome.",
+          "kizunaStatus": "normative",
+          "type": "boolean"
+        },
+        "mutations": {
+          "items": {
+            "$ref": "common.schema.json#/$defs/mutation"
+          },
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaNote": "Column-masked apply: arrival-mode tables resolve by server arrival; hlc-mode tables resolve masked columns by origin HLC (P:verdict-completeness-transforms-and-conflict-rejection, conflict/003).",
+          "kizunaStatus": "normative",
+          "type": "array"
+        }
+      },
+      "required": [
+        "atomic",
+        "mutations"
+      ],
+      "type": "object"
+    },
+    "client_id": {
+      "format": "uuid",
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:clients-registry"
+      ],
+      "kizunaNote": "Optional client identity, decided by D-client-identity: when present the server registers the client under it, when absent it falls back to the Supabase Auth JWT session_id claim. A uuid string; the UUID placeholder grammar uses kind code c1.",
+      "kizunaStatus": "normative",
+      "type": "string"
+    },
+    "last_mutation_id": {
+      "kizunaCites": [
+        "SQL:push-request-shape",
+        "P:session-guarantees-and-exactly-once-effect"
+      ],
+      "kizunaNote": "Exactly-once-effect dedup watermark (P:session-guarantees-and-exactly-once-effect; _clients.last_mutation_id, SQL:clients-last-mutation-id). Reconciliation of the single watermark vs per-mutation verdict replay is D-dedup-storage-model: transcripts assert only observables valid under either reading (replay returns the recorded verdicts; effects never double-applied).",
+      "kizunaOpen": [
+        "D-dedup-storage-model"
+      ],
+      "kizunaStatus": "normative",
+      "oneOf": [
+        {
+          "$ref": "common.schema.json#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema_version": {
+      "kizunaCites": [
+        "P:schema-version-signalling"
+      ],
+      "kizunaNote": "Normative: 'Every RPC carries schema_version' (P:schema-version-signalling). D-schema-version-handshake decided the public push parameter, and 0001_kizuna_init.sql enforces it. Integer >= 1.",
+      "kizunaStatus": "normative",
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "batch",
+    "last_mutation_id",
+    "schema_version"
+  ],
+  "type": "object"
+}

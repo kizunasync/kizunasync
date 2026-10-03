@@ -1,0 +1,152 @@
+{
+  "$id": "https://schemas.kizunasync.dev/push-response.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "kizunaCites": [
+    "P:mutations-and-column-masked-conflict-resolution",
+    "P:verdict-completeness-transforms-and-conflict-rejection"
+  ],
+  "kizunaNote": "kizunasync.push response (JSON:API / AIP-233 shape). A non-atomic batch and a successful atomic batch carry per-mutation verdicts under the correlation D-verdict-correlation ratified; an atomic rejection returns the D-atomic-batch-abort batch outcome; a stale schema_version returns the D-schema-version-handshake RESET_REQUIRED signal before any mutation runs.",
+  "kizunaStatus": "normative",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "kizunaNote": "Success arm: one verdict per request mutation, in request order and carrying mutation_id. D-verdict-correlation ratified this dual correlation and invariant I-5 enforces the bijection. Replays return recorded verdicts (P:verdict-completeness-transforms-and-conflict-rejection).",
+      "kizunaStatus": "normative",
+      "properties": {
+        "verdicts": {
+          "items": {
+            "$ref": "common.schema.json#/$defs/verdict"
+          },
+          "kizunaCites": [
+            "P:mutations-and-column-masked-conflict-resolution",
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaStatus": "normative",
+          "type": "array"
+        }
+      },
+      "required": [
+        "verdicts"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection"
+      ],
+      "kizunaNote": "Atomic-abort arm (D-atomic-batch-abort decided): the batch reverted entirely; a single batch outcome names the offender, no member verdicts. The bijection (I-5) is conditional on success.",
+      "kizunaStatus": "normative",
+      "properties": {
+        "batch": {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:verdict-completeness-transforms-and-conflict-rejection"
+          ],
+          "kizunaStatus": "normative",
+          "properties": {
+            "offender_mutation_id": {
+              "$ref": "common.schema.json#/$defs/uuid",
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection"
+              ],
+              "kizunaNote": "The mutation whose rejection reverted the batch.",
+              "kizunaStatus": "normative"
+            },
+            "outcome": {
+              "const": "aborted",
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection"
+              ],
+              "kizunaStatus": "normative"
+            },
+            "reason": {
+              "enum": [
+                "PRECONDITION",
+                "RLS_DENIED",
+                "CONSTRAINT",
+                "DELETE_WINS",
+                "SUPERSEDED",
+                "COLUMN_DENIED"
+              ],
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection",
+                "P:mutations-and-column-masked-conflict-resolution",
+                "P:protocol-is-the-product-the-corpus-is-the-arbiter"
+              ],
+              "kizunaNote": "The offender's rejection reason: the same closed union the per-mutation verdict carries (D-rejection-reasons). SUPERSEDED is the hlc-mode literal (conflict/003).",
+              "kizunaStatus": "proposed",
+              "type": "string"
+            },
+            "server_row": {
+              "kizunaCites": [
+                "P:verdict-completeness-transforms-and-conflict-rejection"
+              ],
+              "kizunaNote": "The offender's compensating-revert row (P:verdict-completeness-transforms-and-conflict-rejection); null when invoker-invisible (RLS) or deleted (delete-wins), D-rejection-reasons note.",
+              "kizunaStatus": "normative",
+              "oneOf": [
+                {
+                  "$ref": "common.schema.json#/$defs/column_values"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "offender_mutation_id",
+            "outcome",
+            "reason",
+            "server_row"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "batch"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "kizunaCites": [
+        "P:verdict-completeness-transforms-and-conflict-rejection",
+        "P:schema-version-signalling"
+      ],
+      "kizunaNote": "Stale-schema arm (D-schema-version-handshake decided): a push whose schema_version is below the configured minimum is gated BEFORE any mutation and returns a typed RESET_REQUIRED signal, symmetric with the pull-side handshake (lifecycle/002, lifecycle/003), never a fabricated verdict. The client soft-blocks and prompts update (P:schema-version-signalling); the outbox and the exactly-once watermark are untouched.",
+      "kizunaStatus": "normative",
+      "properties": {
+        "signal": {
+          "additionalProperties": false,
+          "kizunaCites": [
+            "P:schema-version-signalling"
+          ],
+          "kizunaNote": "RESET_REQUIRED only: the push-side schema handshake mirrors the pull signal (CHECKPOINT_EXPIRED is a cursor concept, pull-only).",
+          "kizunaStatus": "normative",
+          "properties": {
+            "type": {
+              "const": "RESET_REQUIRED",
+              "kizunaCites": [
+                "P:schema-version-signalling"
+              ],
+              "kizunaStatus": "normative"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "signal"
+      ],
+      "type": "object"
+    }
+  ]
+}

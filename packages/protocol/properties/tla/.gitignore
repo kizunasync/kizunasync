@@ -1,0 +1,9 @@
+# TLC scratch (states, MC temp, error traces, spec stats); .tla/.cfg ARE committed.
+states/
+*.st
+*.bin
+MC.out
+MC*.tla
+MC*.cfg
+*_TTrace_*
+.toolbox/

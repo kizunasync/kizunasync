@@ -1,0 +1,25 @@
+[package]
+name = "kizunasync-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Protocol corpus harness for the Rust engine"
+publish = false
+
+[[bin]]
+name = "kizunasync-conformance"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+async-trait = { workspace = true }
+kizunasync-protocol = { path = "../kizunasync-protocol" }
+kizunasync-store = { path = "../kizunasync-store" }
+kizunasync-engine = { path = "../kizunasync-engine" }
+
+[lints]
+workspace = true

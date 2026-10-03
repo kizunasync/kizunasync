@@ -1,0 +1,151 @@
+name: release-kotlin
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to release (omit the "v", matches an existing v<version> tag)'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (omit the "v", matches an existing v<version> tag)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-kotlin-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: 1.4.2
+
+jobs:
+  maven-central:
+    name: kotlin · AARs + Maven Central com.kizunasync:kizunasync and kizunasync-engine
+    # Note: cargo-binstall's cargo-ndk requires glibc 2.39. Android .so files are
+    # still built from the NDK, so this isn't an N-API Linux build (those remain on 22.04).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Pick release version
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="$VERSION_INPUT"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "error: version '$VERSION' doesn't match X.Y.Z or X.Y.Z-prerelease" >&2
+            exit 1
+          fi
+          CARGO_VERSION="$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" != "$CARGO_VERSION" ]]; then
+            echo "error: tag version '$VERSION' doesn't match Cargo.toml version '$CARGO_VERSION'" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "error: tag version '$VERSION' doesn't match package.json version '$PACKAGE_VERSION'" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Restore cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-aar
+          cache-on-failure: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          gradle-version: "8.7"
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          link-to-sdk: true
+
+      - name: Install cargo-ndk
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        with:
+          tool: cargo-ndk
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: bun run cargo:bindgen:check
+        run: bun run cargo:bindgen:check
+
+      - name: Build Android AARs
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-aar.sh
+
+      - name: Publish to Maven Central
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.MAVEN_SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.MAVEN_SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_SIGNING_PASSWORD }}
+        run: >
+          crates/kizunasync-ffi/bindings/kotlin/gradlew -p crates/kizunasync-ffi/bindings/kotlin
+          :engine:publishAndReleaseToMavenCentral
+          :android:publishAndReleaseToMavenCentral
+          --no-daemon --no-configuration-cache
+          -PkizunasyncVersion="$VERSION"
+
+      - name: Attach the AARs to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp crates/kizunasync-ffi/bindings/kotlin/engine/build/outputs/aar/engine-release.aar "dist/kizunasync-engine-$VERSION.aar"
+          cp crates/kizunasync-ffi/bindings/kotlin/android/build/outputs/aar/android-release.aar "dist/kizunasync-$VERSION.aar"
+          PRERELEASE_FLAG=""
+          if [[ "$VERSION" == 0.* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          # Create release if it doesn't exist, then upload both AARs
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes $PRERELEASE_FLAG
+          fi
+          gh release upload "v$VERSION" "dist/kizunasync-engine-$VERSION.aar" "dist/kizunasync-$VERSION.aar" --clobber
+
+      - name: Upload kizunasync AAR artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kizunasync-aar
+          path: |
+            dist/kizunasync-engine-${{ env.VERSION }}.aar
+            dist/kizunasync-${{ env.VERSION }}.aar
+          retention-days: 14
+ 

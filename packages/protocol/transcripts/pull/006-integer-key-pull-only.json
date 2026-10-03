@@ -1,0 +1,276 @@
+{
+  "case": "pull/006-integer-key-pull-only",
+  "cites": [
+    "D-row-key",
+    "P:keyset-pagination-and-delivery-bound",
+    "SQL:row-key"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "notices is a pull-only table keyed by one bigint column, id (D-row-key): the server numbers its rows and devices only read them, so the transcript carries no local write and no push.",
+      "a pk is the key text, so a bigint key travels as its plain decimal string: '7', '10', '9'. The rows also carry id itself, as the table renders it.",
+      "the stream is ordered by seq, never by pk: '10' sorts before '7' byte for byte, and the page still delivers 7, 10, 9 in the order the server wrote them (P:keyset-pagination-and-delivery-bound).",
+      "the step-4 page delivers live rows of owner user-a, which grants that bucket value, so the step-8 page carries the tombstone of notice 9 under its decimal pk (D-tombstone-delivery)."
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "notices": {
+          "bucket_column": "owner_id",
+          "key_columns": [
+            "id"
+          ]
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "5"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "7",
+      "row": {
+        "body": "doors open at ten",
+        "id": 7,
+        "owner_id": "00000000-0000-4000-8000-a10000000001"
+      },
+      "table": "notices"
+    },
+    {
+      "check": "local-row",
+      "pk": "10",
+      "row": {
+        "body": "the hall seats four hundred",
+        "id": 10,
+        "owner_id": "00000000-0000-4000-8000-a10000000001"
+      },
+      "table": "notices"
+    },
+    {
+      "check": "local-row",
+      "pk": "9",
+      "row": null,
+      "table": "notices"
+    }
+  ],
+  "priority": "P0",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-a10000000002",
+      "columns": {
+        "body": "doors open at nine",
+        "id": 7,
+        "owner_id": "00000000-0000-4000-8000-a10000000001"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "7",
+      "table": "notices"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-a10000000002",
+      "columns": {
+        "body": "the hall seats four hundred",
+        "id": 10,
+        "owner_id": "00000000-0000-4000-8000-a10000000001"
+      },
+      "kind": "server",
+      "n": 2,
+      "op": "upsert",
+      "pk": "10",
+      "table": "notices"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-a10000000002",
+      "columns": {
+        "body": "bring a printed ticket",
+        "id": 9,
+        "owner_id": "00000000-0000-4000-8000-a10000000001"
+      },
+      "kind": "server",
+      "n": 3,
+      "op": "upsert",
+      "pk": "9",
+      "table": "notices"
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "notices"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "7",
+            "row": {
+              "body": "doors open at nine",
+              "id": 7,
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "seq": "1",
+            "table": "notices"
+          },
+          {
+            "pk": "10",
+            "row": {
+              "body": "the hall seats four hundred",
+              "id": 10,
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "seq": "2",
+            "table": "notices"
+          },
+          {
+            "pk": "9",
+            "row": {
+              "body": "bring a printed ticket",
+              "id": 9,
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "seq": "3",
+            "table": "notices"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "local-row",
+          "pk": "10",
+          "row": {
+            "body": "the hall seats four hundred",
+            "id": 10,
+            "owner_id": "00000000-0000-4000-8000-a10000000001"
+          },
+          "table": "notices"
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    },
+    {
+      "actor": "00000000-0000-4000-8000-a10000000002",
+      "columns": {
+        "body": "doors open at ten"
+      },
+      "kind": "server",
+      "n": 6,
+      "op": "upsert",
+      "pk": "7",
+      "table": "notices"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-a10000000002",
+      "kind": "server",
+      "n": 7,
+      "op": "delete",
+      "pk": "9",
+      "table": "notices"
+    },
+    {
+      "kind": "rpc",
+      "n": 8,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "notices"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "3",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "5",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "7",
+            "row": {
+              "body": "doors open at ten",
+              "id": 7,
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "seq": "4",
+            "table": "notices"
+          }
+        ],
+        "signal": null,
+        "tombstones": [
+          {
+            "deleted_at": "2026-01-01T00:00:07.000Z",
+            "pk": "9",
+            "seq": "5",
+            "table": "notices"
+          }
+        ]
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "5"
+        },
+        {
+          "check": "local-row",
+          "pk": "7",
+          "row": {
+            "body": "doors open at ten",
+            "id": 7,
+            "owner_id": "00000000-0000-4000-8000-a10000000001"
+          },
+          "table": "notices"
+        },
+        {
+          "check": "local-row",
+          "pk": "9",
+          "row": null,
+          "table": "notices"
+        }
+      ],
+      "kind": "assert",
+      "n": 9
+    }
+  ],
+  "title": "a pull-only table keyed by one bigint: rows and tombstones travel under the decimal pk, in seq order"
+}

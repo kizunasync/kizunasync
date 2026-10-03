@@ -1,0 +1,15 @@
+{
+  "$comment": "Public resolution of the I-7 authority grammar. Every cite prefix maps to a repo-root-relative path. P:, A:, DR:, DX:, AT:, CONV: resolve by heading slug. SQL: resolves to a '-- MARK: - <anchor>' line. D- resolves as a key of decisions/index.json (registry-key).",
+  "repoRoot": "../..",
+  "tokenConvention": "Each sectioned prefix declares how its token is matched. 'heading-slug': the token equals a heading's lowercase-hyphen slug. 'sql-anchor': the token names a stable '-- MARK: - <token>' line. 'registry-key': the full cite is a key of the target JSON object. No cite addresses a source line.",
+  "prefixes": {
+    "P:": { "target": "packages/protocol/PROTOCOL.md", "sectioned": true, "tokenMatch": "heading-slug", "note": "Protocol sections are headings in PROTOCOL.md." },
+    "A:": { "target": "packages/protocol/PROTOCOL.md", "sectioned": true, "tokenMatch": "heading-slug", "note": "Architecture anchors live under Cross-reference anchors in PROTOCOL.md." },
+    "DR:": { "target": "packages/protocol/PROTOCOL.md", "sectioned": true, "tokenMatch": "heading-slug", "note": "Driver-contract anchors live under Cross-reference anchors in PROTOCOL.md." },
+    "DX:": { "target": { "DX:offline-writes": "docs/sync/offline-writes.md", "DX:test-offline-behavior": "docs/operations/test-offline-behavior.md" }, "sectioned": true, "tokenMatch": "heading-slug", "note": "Developer-experience pages: offline writes and test-offline-behavior." },
+    "AT:": { "target": "docs/attachments/media-and-attachments.md", "sectioned": true, "tokenMatch": "heading-slug", "note": "Attachment design. Heading slug of '# Media attachments' is media-attachments." },
+    "SQL:": { "target": "packages/supabase-pack/supabase/migrations/0001_kizuna_init.sql", "sectioned": true, "tokenMatch": "sql-anchor", "note": "The suffix names a '-- MARK: - <anchor>' comment in the pack migration." },
+    "CONV:": { "target": "CONVENTIONS.md", "sectioned": true, "tokenMatch": "heading-slug", "note": "The suffix is the lowercase-hyphen slug of the heading whose section carries the rule." },
+    "D-": { "target": "packages/protocol/decisions/index.json", "sectioned": true, "tokenMatch": "registry-key", "note": "Decision ids are keys of the generated index. I-7 also checks registry membership." }
+  }
+}

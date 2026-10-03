@@ -1,0 +1,203 @@
+{
+  "case": "push/003-replay-returns-recorded-verdicts",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "P:session-guarantees-and-exactly-once-effect",
+    "SQL:clients-registry"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "exactly-once effect over at-least-once transport (P:session-guarantees-and-exactly-once-effect): the step-3 drop-ack applied the batch server-side (seq '1' stamped) but the ack was lost; the client retries the identical bytes (P:outbox-and-serial-in-flight serial in-flight)",
+      "the retry returns the recorded verdicts without re-applying (P:verdict-completeness-transforms-and-conflict-rejection, idempotent via mutation UUIDs); how the single _clients.last_mutation_id watermark (SQL:clients-last-mutation-id) stores them is D-dedup-storage-model: this transcript asserts only observables valid under either reading",
+      "the step-6 pull proves single apply: row e1 comes back at seq '1': a double apply would have stamped a second sequence number"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "1"
+    },
+    {
+      "check": "outbox-depth",
+      "value": 0
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "applied exactly once"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "applied exactly once"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000004",
+      "n": 1,
+      "op": "insert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 1
+        }
+      ],
+      "kind": "assert",
+      "n": 2
+    },
+    {
+      "fault": "drop-ack",
+      "kind": "fault",
+      "n": 3,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "done": false,
+                "owner_id": "00000000-0000-4000-8000-a10000000001",
+                "title": "applied exactly once"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000004",
+              "op": "insert",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "target": "push"
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "done": false,
+                "owner_id": "00000000-0000-4000-8000-a10000000001",
+                "title": "applied exactly once"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000004",
+              "op": "insert",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "verdicts": [
+          {
+            "mutation_id": "00000000-0000-4000-8000-f10000000004",
+            "verdict": "applied"
+          }
+        ]
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 0
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "applied exactly once"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "applied exactly once"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    }
+  ],
+  "title": "lost ack, identical retry: recorded verdicts return, the effect lands once"
+}

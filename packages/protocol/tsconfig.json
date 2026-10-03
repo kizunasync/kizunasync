@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "noEmit": true,
+    // bun isolated installs put @types under each workspace; packages/protocol/
+    // has no node_modules until the next root `bun install` registers the
+    // workspace in bun.lock, so fall back to the sibling install of the same
+    // pinned @types/bun + @types/node devDependencies. Root path stays first:
+    // once installed there it wins.
+    "typeRoots": ["../../node_modules/@types", "../core/node_modules/@types"],
+    "types": ["bun", "node"]
+  },
+  "include": ["spec/**/*.ts", "harness/**/*.ts", "executor/**/*.ts", "tools/**/*.ts"]
+}

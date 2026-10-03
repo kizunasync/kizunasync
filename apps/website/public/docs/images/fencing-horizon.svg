@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" width="1440" height="810" fill="none" role="img" aria-labelledby="ttl dsc">
+  <title id="ttl">Fencing: a change is numbered when its transaction commits, so a pull's cursor never passes a change it has not seen.</title>
+  <desc id="dsc">Numbered at commit, never skipped. Transaction A and Transaction B write to a synced table while a pull reads the changelog and keeps a cursor, and the consistency horizon under the changelog marks the highest position the pull may resume from. First the numbers are drawn at write time: A draws 100 and stays open, B draws 101 and commits, and the pull sees 101 and moves its cursor to 101. When A finally commits, 100 lands behind the cursor, and the next request asks only for numbers above 101, so the late arrival is skipped. Then the numbers are drawn at commit, the rule kizunasync follows: A has no number while it stays open, B commits as 101 and the cursor moves to 101, A commits and draws 102 above the cursor, and the next pull delivers 102 as the horizon advances.</desc>
+  <style>.s{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+  <defs>
+    <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="10"/></filter>
+    <mask id="gaps">
+      <rect width="1440" height="810" fill="white"/>
+      <rect x="452" y="447" width="476" height="96" fill="black"/>
+      <rect x="1100" y="410" width="280" height="170" rx="14" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="1440" height="810" rx="16" fill="#15141f"/>
+
+  <!-- ===== GRID ===== -->
+  <g fill="#1d1c29" opacity="0.45">
+    <rect x="-60" y="-40" width="176" height="64" rx="10"/><rect x="1368" y="-40" width="176" height="64" rx="10"/>
+    <rect x="-162" y="52" width="176" height="64" rx="10"/>
+    <rect x="-60" y="144" width="176" height="64" rx="10"/><rect x="1368" y="144" width="176" height="64" rx="10"/>
+    <rect x="-162" y="236" width="176" height="64" rx="10"/><rect x="42" y="236" width="176" height="64" rx="10"/><rect x="246" y="236" width="176" height="64" rx="10"/><rect x="450" y="236" width="176" height="64" rx="10"/><rect x="654" y="236" width="176" height="64" rx="10"/><rect x="858" y="236" width="176" height="64" rx="10"/><rect x="1062" y="236" width="176" height="64" rx="10"/><rect x="1266" y="236" width="176" height="64" rx="10"/>
+    <rect x="-60" y="328" width="176" height="64" rx="10"/><rect x="144" y="328" width="176" height="64" rx="10"/><rect x="348" y="328" width="176" height="64" rx="10"/><rect x="552" y="328" width="176" height="64" rx="10"/><rect x="756" y="328" width="176" height="64" rx="10"/><rect x="960" y="328" width="176" height="64" rx="10"/><rect x="1164" y="328" width="176" height="64" rx="10"/><rect x="1368" y="328" width="176" height="64" rx="10"/>
+    <rect x="-162" y="420" width="176" height="64" rx="10"/><rect x="42" y="420" width="176" height="64" rx="10"/><rect x="246" y="420" width="176" height="64" rx="10"/><rect x="450" y="420" width="176" height="64" rx="10"/><rect x="654" y="420" width="176" height="64" rx="10"/><rect x="858" y="420" width="176" height="64" rx="10"/><rect x="1062" y="420" width="176" height="64" rx="10"/><rect x="1266" y="420" width="176" height="64" rx="10"/>
+    <rect x="-60" y="512" width="176" height="64" rx="10"/><rect x="144" y="512" width="176" height="64" rx="10"/><rect x="348" y="512" width="176" height="64" rx="10"/><rect x="552" y="512" width="176" height="64" rx="10"/><rect x="756" y="512" width="176" height="64" rx="10"/><rect x="960" y="512" width="176" height="64" rx="10"/><rect x="1164" y="512" width="176" height="64" rx="10"/><rect x="1368" y="512" width="176" height="64" rx="10"/>
+    <rect x="-162" y="604" width="176" height="64" rx="10"/><rect x="42" y="604" width="176" height="64" rx="10"/><rect x="246" y="604" width="176" height="64" rx="10"/><rect x="450" y="604" width="176" height="64" rx="10"/><rect x="654" y="604" width="176" height="64" rx="10"/><rect x="858" y="604" width="176" height="64" rx="10"/><rect x="1062" y="604" width="176" height="64" rx="10"/><rect x="1266" y="604" width="176" height="64" rx="10"/>
+    <rect x="-60" y="696" width="176" height="64" rx="10"/><rect x="144" y="696" width="176" height="64" rx="10"/><rect x="348" y="696" width="176" height="64" rx="10"/><rect x="552" y="696" width="176" height="64" rx="10"/><rect x="756" y="696" width="176" height="64" rx="10"/><rect x="960" y="696" width="176" height="64" rx="10"/><rect x="1164" y="696" width="176" height="64" rx="10"/><rect x="1368" y="696" width="176" height="64" rx="10"/>
+    <rect x="-162" y="788" width="176" height="64" rx="10"/><rect x="42" y="788" width="176" height="64" rx="10"/><rect x="246" y="788" width="176" height="64" rx="10"/><rect x="450" y="788" width="176" height="64" rx="10"/><rect x="654" y="788" width="176" height="64" rx="10"/><rect x="858" y="788" width="176" height="64" rx="10"/><rect x="1062" y="788" width="176" height="64" rx="10"/><rect x="1266" y="788" width="176" height="64" rx="10"/>
+  </g>
+
+  <!-- ===== HEADLINE ===== -->
+  <text x="720" y="78" text-anchor="middle" class="s" font-size="46" font-weight="700" fill="#ecebf0">Numbered <tspan fill="#e5484d">at commit</tspan>, never skipped.</text>
+  <text x="720" y="120" text-anchor="middle" class="s" font-size="21" fill="#a7a4b2">A change gets its sequence number when its transaction commits, so a pull's cursor never passes a row it has not seen.</text>
+
+  <!-- ===== MODE ===== -->
+  <g>
+    <rect x="591.5" y="177" width="257" height="38" rx="12" fill="#15141f" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+    <text x="720" y="203" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">numbered at commit</text>
+    <animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.0375;0.04688;0.49688;0.50625;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <rect x="567.5" y="177" width="305" height="38" rx="12" fill="#15141f" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <text x="720" y="203" text-anchor="middle" class="m" font-size="20" fill="#a7a4b2">numbered at write time</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.04688;0.05625;0.4875;0.49688;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- ===== TRANSACTIONS ===== -->
+  <rect x="60" y="290" width="320" height="170" rx="14" fill="none" stroke="#e5484d" stroke-width="3" filter="url(#glow)" opacity="0.35">
+    <animate attributeName="opacity" values="0.35;0.35;0.7;0.35;0.35;0.7;0.35;0.35" keyTimes="0;0.34375;0.3625;0.4125;0.71875;0.7375;0.7875;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </rect>
+  <rect x="60" y="290" width="320" height="170" rx="14" fill="#1d1c29" stroke="#e5484d" stroke-width="1.5"/>
+  <text x="88" y="340" class="s" font-size="24" font-weight="700" fill="#ecebf0">Transaction A</text>
+  <rect x="80" y="364" width="280" height="78" rx="10" fill="#26252f"/>
+  <text x="100" y="394" class="m" font-size="20" fill="#a7a4b2">state</text>
+  <text x="184" y="394" class="m" font-size="20" fill="#a7a4b2">open<animate attributeName="opacity" values="1;1;0;0;1;1;0;0;1;1" keyTimes="0;0.35;0.35938;0.49688;0.50625;0.725;0.73438;0.94063;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="184" y="394" class="m" font-size="20" fill="#ecebf0" opacity="0">committed<animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.35938;0.36875;0.4875;0.49688;0.73438;0.74375;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="100" y="428" class="m" font-size="20" fill="#a7a4b2">seq</text>
+  <text x="184" y="428" class="m" font-size="20" fill="#e5484d">no number<animate attributeName="opacity" values="1;1;0;0;1;1;0;0;1;1" keyTimes="0;0.075;0.08437;0.49688;0.50625;0.725;0.73438;0.94063;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="184" y="428" class="m" font-size="20" fill="#e5484d" opacity="0">100<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.08437;0.09375;0.4875;0.49688;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="184" y="428" class="m" font-size="20" fill="#e5484d" opacity="0">102<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.73438;0.74375;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <rect x="60" y="530" width="320" height="170" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <text x="88" y="580" class="s" font-size="24" font-weight="700" fill="#ecebf0">Transaction B</text>
+  <rect x="80" y="604" width="280" height="78" rx="10" fill="#1d1c29"/>
+  <text x="100" y="634" class="m" font-size="20" fill="#a7a4b2">state</text>
+  <text x="184" y="634" class="m" font-size="20" fill="#a7a4b2">open<animate attributeName="opacity" values="1;1;0;0;1;1;0;0;1;1" keyTimes="0;0.175;0.18437;0.49688;0.50625;0.5625;0.57188;0.94063;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="184" y="634" class="m" font-size="20" fill="#ecebf0" opacity="0">committed<animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.18437;0.19375;0.4875;0.49688;0.57188;0.58125;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="100" y="668" class="m" font-size="20" fill="#a7a4b2">seq</text>
+  <text x="184" y="668" class="m" font-size="20" fill="#a7a4b2">no number<animate attributeName="opacity" values="1;1;0;0;1;1;0;0;1;1" keyTimes="0;0.125;0.13437;0.49688;0.50625;0.5625;0.57188;0.94063;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="184" y="668" class="m" font-size="20" fill="#ecebf0" opacity="0">101<animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.13437;0.14375;0.4875;0.49688;0.57188;0.58125;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+
+  <!-- ===== CHANGELOG ===== -->
+  <text x="460" y="433" class="s" font-size="20" fill="#a7a4b2">changelog</text>
+  <rect x="460" y="455" width="84" height="80" rx="10" fill="#26252f" stroke="#a7a4b2" stroke-opacity="0.5" stroke-width="1.5"/>
+  <text x="502" y="503" text-anchor="middle" class="m" font-size="22" fill="#ecebf0">98</text>
+  <rect x="554" y="455" width="84" height="80" rx="10" fill="#26252f" stroke="#a7a4b2" stroke-opacity="0.5" stroke-width="1.5"/>
+  <text x="596" y="503" text-anchor="middle" class="m" font-size="22" fill="#ecebf0">99</text>
+  <rect x="648" y="455" width="84" height="80" rx="10" stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <text x="690" y="503" text-anchor="middle" class="m" font-size="22" fill="#a7a4b2" opacity="0.5">100</text>
+  <rect x="742" y="455" width="84" height="80" rx="10" stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <text x="784" y="503" text-anchor="middle" class="m" font-size="22" fill="#a7a4b2" opacity="0.5">101</text>
+  <rect x="836" y="455" width="84" height="80" rx="10" stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <text x="878" y="503" text-anchor="middle" class="m" font-size="22" fill="#a7a4b2" opacity="0.5">102</text>
+  <g opacity="0">
+    <rect x="648" y="455" width="84" height="80" rx="10" fill="#15141f" stroke="#e5484d" stroke-opacity="1" stroke-width="2" stroke-dasharray="4 6"/>
+    <text x="690" y="503" text-anchor="middle" class="m" font-size="22" fill="#e5484d">100</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.08437;0.09375;0.35;0.35938;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <rect x="648" y="455" width="84" height="80" rx="10" stroke="#15141f" stroke-width="2.5"/>
+    <rect x="648" y="455" width="84" height="80" rx="10" fill="#26252f" stroke="#a7a4b2" stroke-opacity="0.5" stroke-width="1.5"/>
+    <text x="690" y="503" text-anchor="middle" class="m" font-size="22" fill="#ecebf0">100</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.35938;0.36875;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <rect x="648" y="455" width="84" height="80" rx="10" fill="#26252f" stroke="#e5484d" stroke-opacity="1" stroke-width="2"/>
+    <text x="690" y="503" text-anchor="middle" class="m" font-size="22" fill="#ecebf0">100</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.35938;0.36875;0.4875;0.49688;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <rect x="742" y="455" width="84" height="80" rx="10" stroke="#15141f" stroke-width="2.5"/>
+    <rect x="742" y="455" width="84" height="80" rx="10" fill="#26252f" stroke="#a7a4b2" stroke-opacity="0.5" stroke-width="1.5"/>
+    <text x="784" y="503" text-anchor="middle" class="m" font-size="22" fill="#ecebf0">101</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.18437;0.19375;0.4875;0.49688;0.57188;0.58125;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <g opacity="0">
+    <rect x="836" y="455" width="84" height="80" rx="10" fill="#26252f" stroke="#e5484d" stroke-opacity="1" stroke-width="2"/>
+    <text x="878" y="503" text-anchor="middle" class="m" font-size="22" fill="#ecebf0">102</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.73438;0.74375;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <text x="912" y="481" text-anchor="end" class="m" font-size="20" fill="#3ECF8E" opacity="0">✓<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.84688;0.85625;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <g opacity="0">
+    <rect x="640" y="447" width="100" height="96" rx="16" stroke="#e5484d" stroke-width="2"/>
+    <rect x="634" y="441" width="112" height="108" rx="20" stroke="#b03b3f" stroke-opacity="0.5" stroke-width="1"/>
+    <path d="M690 549 V608" stroke="#e5484d" stroke-opacity="0.6" stroke-width="1.5" stroke-dasharray="4 6"/>
+    <text x="690" y="634" text-anchor="middle" class="m" font-size="20" fill="#e5484d">late arrival · skipped</text>
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.36875;0.3875;0.4875;0.49688;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+
+  <!-- ===== HORIZON ===== -->
+  <line x1="452" y1="560" x2="643" y2="560" stroke="#ecebf0" stroke-opacity="0.7" stroke-width="2" stroke-linecap="round"><animate attributeName="x2" values="643;643;831;831;737;737;831;831;925;925;643;643" keyTimes="0;0.275;0.30625;0.4875;0.51875;0.6625;0.69375;0.8375;0.86875;0.93125;0.9625;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></line>
+  <g transform="translate(643 0)">
+    <path d="M0 443 V560" stroke="#ecebf0" stroke-opacity="0.7" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="0" cy="443" r="4" fill="#ecebf0"/>
+    <animateTransform attributeName="transform" type="translate" values="643 0;643 0;831 0;831 0;737 0;737 0;831 0;831 0;925 0;925 0;643 0;643 0" keyTimes="0;0.275;0.30625;0.4875;0.51875;0.6625;0.69375;0.8375;0.86875;0.93125;0.9625;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+  </g>
+  <text x="460" y="594" class="s" font-size="20" fill="#a7a4b2">consistency horizon</text>
+
+  <!-- ===== PULL ===== -->
+  <rect x="1100" y="410" width="280" height="170" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <text x="1128" y="460" class="s" font-size="24" font-weight="700" fill="#ecebf0">Pull</text>
+  <rect x="1120" y="484" width="240" height="78" rx="10" fill="#1d1c29"/>
+  <text x="1140" y="514" class="m" font-size="20" fill="#a7a4b2">cursor</text>
+  <text x="1236" y="514" class="m" font-size="20" fill="#ecebf0">99<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.275;0.28438;0.94063;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1236" y="514" class="m" font-size="20" fill="#ecebf0" opacity="0">101<animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.28438;0.29375;0.4875;0.49688;0.67188;0.68125;0.8375;0.84688;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1236" y="514" class="m" font-size="20" fill="#ecebf0" opacity="0">100<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.49688;0.50625;0.6625;0.67188;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1236" y="514" class="m" font-size="20" fill="#ecebf0" opacity="0">102<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.84688;0.85625;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1140" y="548" class="m" font-size="20" fill="#a7a4b2">asks</text>
+  <text x="1236" y="548" class="m" font-size="20" fill="#a7a4b2">&gt; 99<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.275;0.28438;0.94063;0.95;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1236" y="548" class="m" font-size="20" fill="#a7a4b2" opacity="0">&gt; 101<animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.28438;0.29375;0.4875;0.49688;0.67188;0.68125;0.8375;0.84688;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1236" y="548" class="m" font-size="20" fill="#a7a4b2" opacity="0">&gt; 100<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.49688;0.50625;0.6625;0.67188;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+  <text x="1236" y="548" class="m" font-size="20" fill="#a7a4b2" opacity="0">&gt; 102<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.84688;0.85625;0.93125;0.94063;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/></text>
+
+  <!-- ===== WIRES ===== -->
+  <g stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6">
+    <path d="M380 375 C420 375 410 480 436 480"/>
+    <path d="M380 615 C420 615 410 510 436 510"/>
+    <path d="M932 495 H1082"/>
+  </g>
+  <g fill="#a7a4b2" fill-opacity="0.35">
+    <polygon points="436,475 448,480 436,485"/><polygon points="436,505 448,510 436,515"/><polygon points="1082,490 1094,495 1082,500"/>
+  </g>
+
+  <!-- ===== ANIMATION ===== -->
+  <g mask="url(#gaps)">
+    <g opacity="0">
+      <g transform="translate(-58 -19)">
+        <rect width="116" height="38" rx="8" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+        <text x="58" y="26" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">seq 101</text>
+      </g>
+      <animateMotion path="M932 495 H1082" keyPoints="0;0;1;1" keyTimes="0;0.2125;0.275;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2125;0.22187;0.26562;0.275;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-58 -19)">
+        <rect width="116" height="38" rx="8" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+        <text x="58" y="26" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">seq 101</text>
+      </g>
+      <animateMotion path="M932 495 H1082" keyPoints="0;0;1;1" keyTimes="0;0.6;0.6625;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6;0.60938;0.65312;0.6625;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-70 -19)">
+        <rect width="140" height="38" rx="8" fill="#1d1c29" stroke="#e5484d" stroke-opacity="0.8" stroke-width="1.5"/>
+        <text x="70" y="26" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">seq 102 <tspan fill="#3ECF8E">✓</tspan></text>
+      </g>
+      <animateMotion path="M932 495 H1082" keyPoints="0;0;1;1" keyTimes="0;0.775;0.8375;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.775;0.78438;0.82812;0.8375;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="16s" repeatCount="indefinite"/>
+    </g>
+  </g>
+</svg>

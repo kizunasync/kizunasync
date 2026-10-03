@@ -1,0 +1,48 @@
+# Kizuna local Supabase: serves the example app and the sync-inspector admin
+# panel. Reference: https://supabase.com/docs/guides/local-development/cli/config
+
+project_id = "kizunasync"
+
+[api]
+enabled = true
+port = 55321
+# kizunasync is exposed so the engine can call the kizunasync.pull/push RPCs
+# (createRpcRemote) and the read-only admin sync-inspector can read _clients /
+# _changelog. The api roles' table privileges are granted in 0001_kizuna_init.sql.
+schemas = ["public", "graphql_public", "kizunasync"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 55322
+shadow_port = 55320
+major_version = 17
+
+[db.migrations]
+enabled = true
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 55323
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[realtime]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000", "kizuna-todo://"]
+# The example app signs in silently, no manual config.toml editing needed.
+enable_anonymous_sign_ins = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false

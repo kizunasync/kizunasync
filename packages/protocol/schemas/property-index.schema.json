@@ -1,0 +1,55 @@
+{
+  "$id": "https://schemas.kizunasync.dev/property-index.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": {
+    "additionalProperties": false,
+    "properties": {
+      "cfg": {
+        "pattern": "^tla/prop_[0-9]{3}_[a-z0-9_]+\\.cfg$",
+        "type": "string"
+      },
+      "cites": {
+        "items": {
+          "pattern": "^((SQL:|CONV:|P:|A:|DR:|DX:|AT:)[a-z][a-z0-9]*(-[a-z0-9]+)*$|D-[a-z][a-z0-9]*(-[a-z0-9]+)*$)",
+          "type": "string"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "fencing": {
+        "enum": [
+          "shared"
+        ],
+        "type": "string"
+      },
+      "status": {
+        "const": "tla"
+      },
+      "title": {
+        "type": "string"
+      },
+      "tla": {
+        "pattern": "^tla/prop_[0-9]{3}_[a-z0-9_]+\\.tla$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "cfg",
+      "cites",
+      "fencing",
+      "status",
+      "title",
+      "tla"
+    ],
+    "type": "object"
+  },
+  "kizunaCites": [
+    "P:the-golden-corpus-and-deterministic-placeholders"
+  ],
+  "kizunaNote": "Index of TLA+ property specs (P:the-golden-corpus-and-deterministic-placeholders). Each entry points at a .tla + .cfg model-checkable by TLC (see tools/run-tlc.sh, bun run check:tla). status is 'tla': every entry names a model TLC checks. cites grammar matches transcripts (invariant I-7).",
+  "kizunaStatus": "proposed",
+  "propertyNames": {
+    "pattern": "^prop-[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*$"
+  },
+  "type": "object"
+}

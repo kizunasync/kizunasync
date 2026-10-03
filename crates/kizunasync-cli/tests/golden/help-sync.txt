@@ -1,0 +1,116 @@
+Add and remove synced tables
+
+Usage: kizunasync sync [OPTIONS]
+
+Options:
+      --add <TABLE>
+          Tables to start syncing (repeatable)
+
+  -v, --version
+          Print the version and exit
+
+      --no-color
+          Never emit ANSI colour (also honoured: NO_COLOR)
+
+      --remove <TABLE>
+          Tables to stop syncing (repeatable)
+
+      --sync <MODE>
+          Sync mode for every added table (default: pull-only)
+
+          Possible values:
+          - pull-only:  Pulled, but a push targeting it is rejected server-side
+          - read-write: Bidirectional
+
+      --workdir <PATH>
+          Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+
+      --bucket-column <COL>
+          Column every added table's rows are scoped by (default: none)
+
+      --soft-delete <COL>
+          Soft-delete column for every added table (default: none)
+
+      --conflict <MODE>
+          Conflict mode for every added table (default: arrival)
+
+          Possible values:
+          - arrival: Column-LWW by server arrival order
+          - hlc:     Column-LWW keyed on the origin HLC
+
+      --conflict-journal
+          Record overwritten same-column values server-side (default: off)
+
+      --register-clients
+          Record one client row per device that syncs an added table (default: off)
+
+      --no-register-clients
+          Do not record client rows for an added table (default: off)
+
+      --min-schema-version <N>
+          Lowest client schema version every added table accepts (default: 1)
+
+      --tombstone-ttl-days <DAYS>
+          Tombstone retention for every added table (default: the project's own)
+
+      --max-batch-size <N>
+          Largest push the server accepts (unnamed: unchanged)
+
+      --no-max-batch-size
+          Accept a push of any size (unnamed: unchanged)
+
+      --require-atomic
+          Reject a non-atomic push (unnamed: unchanged)
+
+      --no-require-atomic
+          Accept a non-atomic push (unnamed: unchanged)
+
+      --reap-schedule <CRON>
+          UTC crontab for the tombstone reaper (unnamed: unchanged)
+
+      --compact-schedule <CRON>
+          UTC crontab for the changelog compactor (unnamed: unchanged)
+
+      --client-prune-schedule <CRON>
+          UTC crontab for the client pruner (unnamed: unchanged)
+
+      --client-ttl-days <DAYS>
+          Days of silence after which a client row is pruned (unnamed: unchanged)
+
+      --hlc-max-skew-ms <MS>
+          Forward-drift tolerance for an origin HLC (unnamed: unchanged)
+
+      --max-pull-scan <N>
+          Candidates one pull page examines at most (unnamed: unchanged)
+
+      --allow-no-cron
+          Write a schedule even when pg_cron is absent to run it
+
+      --allow-no-rls
+          Sync an added table even when its row level security is disabled
+
+      --schema <SCHEMA>
+          Schema the synced tables live in (the pack supports public only)
+          
+          [default: public]
+
+      --db-url <URL>
+          Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+
+      --project-ref <REF>
+          Configure the hosted project over the Management API
+
+      --access-token <TOKEN>
+          Personal Access Token for --project-ref
+
+      --dry-run
+          Show the plan and the SQL; write nothing
+
+      --yes
+          Write without asking
+
+      --local-only
+          Write the migration but do not apply it
+
+  -h, --help
+          Print help (see a summary with '-h')

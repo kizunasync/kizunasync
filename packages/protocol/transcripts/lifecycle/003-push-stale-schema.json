@@ -1,0 +1,110 @@
+{
+  "case": "lifecycle/003-push-stale-schema",
+  "cites": [
+    "P:verdict-completeness-transforms-and-conflict-rejection",
+    "P:schema-version-signalling"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "a local insert is queued (P:outbox-and-serial-in-flight, the DB is the queue) but this client's schema_version 1 is below the server's configured minimum 2 (a breaking migration shipped while the client was old, P:schema-version-signalling): the whole push is gated BEFORE any mutation is processed",
+      "the push returns a typed RESET_REQUIRED signal, symmetric with the pull-side handshake (lifecycle/002), never a fabricated verdict (D-schema-version-handshake decided); the client soft-blocks and prompts update (P:schema-version-signalling, never location.reload())",
+      "the outbox is UNTOUCHED (the queued write is not at fault) and the cursor is untouched; after the user updates, the retried push carries the new schema_version"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 2,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "outbox-depth",
+      "value": 1
+    },
+    {
+      "check": "cursor",
+      "value": "0"
+    }
+  ],
+  "priority": "P1",
+  "status": "normative",
+  "steps": [
+    {
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "queued before the breaking migration"
+      },
+      "kind": "local",
+      "mutation_id": "00000000-0000-4000-8000-f10000000001",
+      "n": 1,
+      "op": "insert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "checks": [
+        {
+          "check": "outbox-depth",
+          "value": 1
+        }
+      ],
+      "kind": "assert",
+      "n": 2
+    },
+    {
+      "kind": "rpc",
+      "n": 3,
+      "request": {
+        "batch": {
+          "atomic": false,
+          "mutations": [
+            {
+              "columns": {
+                "done": false,
+                "owner_id": "00000000-0000-4000-8000-a10000000001",
+                "title": "queued before the breaking migration"
+              },
+              "mutation_id": "00000000-0000-4000-8000-f10000000001",
+              "op": "insert",
+              "pk": "00000000-0000-4000-8000-e10000000001",
+              "table": "todos"
+            }
+          ]
+        },
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "last_mutation_id": null,
+        "schema_version": 1
+      },
+      "response": {
+        "signal": {
+          "type": "RESET_REQUIRED"
+        }
+      },
+      "rpc": "push"
+    },
+    {
+      "checks": [
+        {
+          "check": "event",
+          "event": "RESET_REQUIRED"
+        },
+        {
+          "check": "outbox-depth",
+          "value": 1
+        }
+      ],
+      "kind": "assert",
+      "n": 4
+    }
+  ],
+  "title": "push with stale schema_version: typed RESET_REQUIRED, client soft-blocks"
+}

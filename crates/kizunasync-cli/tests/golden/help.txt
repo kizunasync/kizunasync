@@ -1,0 +1,27 @@
+絆 Kizuna Sync: offline-first sync for Supabase
+
+Usage: kizunasync [OPTIONS] [COMMAND]
+
+Commands:
+  init         Provision Kizuna into your Supabase project
+  sync         Add and remove synced tables
+  status       Report pack state, synced tables, columns, clients, and exposed-schema config
+  doctor       Verify the project: synced tables, supabase dir, provisioned state
+  lint         Classify pending migrations as additive vs breaking
+  upgrade      Apply the pack files the ledger does not record yet when all are additive, or re-apply the pack with --reapply
+  deprovision  Remove every ledgered Kizuna object from the project
+  jobs         List, run, and reschedule the pack's background jobs
+  mock         Test tooling: deterministic datasets and marker-scoped write churn
+  version      Print the version
+  help         Print this message or the help of the given subcommand(s)
+
+Options:
+  -v, --version         Print the version and exit
+      --no-color        Never emit ANSI colour (also honoured: NO_COLOR)
+      --workdir <PATH>  Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+  -h, --help            Print help
+
+Docs: https://kizunasync.com/docs/cli
+
+init/sync prompt on a TTY; status is a Clack report on a TTY, or --json/--quiet for CI.
+Run kizunasync with no command in a terminal for the setup flow, or the control panel once Kizuna is installed; anywhere else it prints this help.

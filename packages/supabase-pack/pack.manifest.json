@@ -1,0 +1,10 @@
+{
+  "$comment": "Source of truth for the installable Kizuna pack versus local-development demo fixtures. See docs/reference/sql-pack.md and docs/cli/cli.md. The pack contains the current schema, bookkeeping, RPCs, grants, conflict journal, Realtime doorbell policies, the settings-driven retention knobs and the three guarded jobs kizunasync._schedule_jobs() writes (kizunasync-reap-tombstones, kizunasync-compact-changelog, kizunasync-prune-clients), and the provision ledger, with no application demo data. `kizunasync init` generates per-project `_config` / `_settings` rows and triggers through crates/kizunasync-cli/src/config_sql.rs. The demo fixture adds the todos schema, Storage setup, demo identities, soft delete, and the shared-board policies; it is not part of the installable pack.",
+  "pack": [
+    "0001_kizuna_init.sql"
+  ],
+  "demo": [
+    "0002_example.sql",
+    "0001_public_demo_hardening.sql"
+  ]
+}

@@ -1,0 +1,252 @@
+{
+  "case": "pull/005-scan-cap-continues-below-the-limit",
+  "cites": [
+    "D-page-cap-and-checkpoint-boundary",
+    "P:keyset-pagination-and-delivery-bound",
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the server examines at most max_pull_scan candidates per page (context.server.max_pull_scan 2, the pack's _settings.max_pull_scan), the rows it withholds and the entries it delivers alike (D-page-cap-and-checkpoint-boundary)",
+      "page one (step 4) stops after two candidates although the limit is 3: it carries two entries with has_more true and the continuation cursor '0:2', the transfer's start '0' and the seq of the last candidate it examined (D-cursor-opaque-token)",
+      "page two (step 6) examines the one remaining candidate and closes the checkpoint with has_more false; the step-5 assert pins that the first page stays staged and the durable cursor stays at 0 until then (P:cursor-monotonicity-rebase-and-atomic-checkpoints)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "max_pull_scan": 2,
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "row one"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "row two"
+      },
+      "table": "todos"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "row": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "row three"
+      },
+      "table": "todos"
+    }
+  ],
+  "priority": "P1",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "row one"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "row two"
+      },
+      "kind": "server",
+      "n": 2,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000002",
+      "table": "todos"
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "row three"
+      },
+      "kind": "server",
+      "n": 3,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000003",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 4,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "limit": 3,
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "0:2",
+        "has_more": true,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "row one"
+            },
+            "seq": "1",
+            "table": "todos"
+          },
+          {
+            "pk": "00000000-0000-4000-8000-e10000000002",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "row two"
+            },
+            "seq": "2",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "0"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        },
+        {
+          "check": "no-intermediate-commit"
+        }
+      ],
+      "kind": "assert",
+      "n": 5
+    },
+    {
+      "kind": "rpc",
+      "n": 6,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0:2",
+        "limit": 3,
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000003",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "row three"
+            },
+            "seq": "3",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "row one"
+          },
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000002",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "row two"
+          },
+          "table": "todos"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000003",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "row three"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 7
+    }
+  ],
+  "title": "the scan cap ends a page below the limit, and the transfer continues from the last candidate examined"
+}

@@ -1,0 +1,25 @@
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+  name: "kizunasync-swift",
+  platforms: [.iOS(.v16), .macOS(.v13)],
+  products: [
+    .library(name: "KizunaSync", targets: ["KizunaSync"]),
+    // The engine binary alone, which @kizunasync/rn-uniffi links. Apps depend on KizunaSync.
+    .library(name: "KizunaSyncEngine", targets: ["KizunaSyncFfiRust"]),
+  ],
+  targets: [
+    {{BINARY_TARGET}},
+    .target(
+      name: "KizunaSyncFfi",
+      dependencies: ["KizunaSyncFfiRust"],
+      path: "Sources/KizunaSyncFfi"
+    ),
+    .target(
+      name: "KizunaSync",
+      dependencies: ["KizunaSyncFfi"],
+      path: "Sources/KizunaSync"
+    ),
+  ]
+)

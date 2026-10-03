@@ -1,0 +1,110 @@
+{
+  "$id": "https://schemas.kizunasync.dev/pull-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "kizunaCites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "SQL:pull-request-shape"
+  ],
+  "kizunaNote": "PostgREST RPC body for kizunasync.pull: top-level keys are SQL argument names. Client identity rides the optional client_id key (D-client-identity), with the Supabase Auth JWT session_id claim as the fallback when it is absent.",
+  "kizunaStatus": "normative",
+  "properties": {
+    "buckets": {
+      "items": {
+        "additionalProperties": false,
+        "kizunaCites": [
+          "P:mutations-and-column-masked-conflict-resolution"
+        ],
+        "kizunaNote": "A bucket is {table, params}. Current transcripts use one owner-equality bucket {\"table\":\"todos\",\"params\":{\"owner_id\":\"<user uuid>\"}}; that fixture choice does not narrow the schema.",
+        "kizunaStatus": "proposed",
+        "properties": {
+          "params": {
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "kizunaCites": [
+              "P:mutations-and-column-masked-conflict-resolution"
+            ],
+            "kizunaNote": "Owner/tenant equality over indexed top-level columns (P:mutations-and-column-masked-conflict-resolution Bucket).",
+            "kizunaStatus": "proposed",
+            "type": "object"
+          },
+          "table": {
+            "$ref": "common.schema.json#/$defs/table_name",
+            "kizunaCites": [
+              "P:mutations-and-column-masked-conflict-resolution"
+            ],
+            "kizunaStatus": "proposed"
+          }
+        },
+        "required": [
+          "params",
+          "table"
+        ],
+        "type": "object"
+      },
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:pull-request-shape"
+      ],
+      "kizunaNote": "Declared parameterized subsets (normative concept, P:mutations-and-column-masked-conflict-resolution Bucket). Live row images are RLS-scoped; tombstone identifiers are selected by the bucket, not by replaying RLS on a gone row. At most 64 entries: the SQL pack and the reference oracle refuse a longer list with SQLSTATE 22023 before any gate runs (D-page-cap-and-checkpoint-boundary). The SQL pack casts the bucket column's value through the column type once, so a pull of a bucketed table reads only the changelog entries labeled with a requested value (D-bucket-move-out).",
+      "kizunaStatus": "normative",
+      "type": "array"
+    },
+    "client_id": {
+      "format": "uuid",
+      "kizunaCites": [
+        "P:mutations-and-column-masked-conflict-resolution",
+        "SQL:clients-registry"
+      ],
+      "kizunaNote": "Optional client identity, decided by D-client-identity: when present the server registers the client under it, when absent it falls back to the Supabase Auth JWT session_id claim. A uuid string; the UUID placeholder grammar uses kind code c1.",
+      "kizunaStatus": "normative",
+      "type": "string"
+    },
+    "cursor": {
+      "$ref": "common.schema.json#/$defs/cursor",
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "SQL:pull-request-shape"
+      ],
+      "kizunaNote": "'0' = bootstrap. D-cursor-opaque-token selected an opaque text token: a decimal high-water mark, optionally followed by '~' and ascending dot-separated holes.",
+      "kizunaStatus": "normative"
+    },
+    "limit": {
+      "kizunaCites": [
+        "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+        "SQL:default-page-limit"
+      ],
+      "kizunaNote": "Optional; default 500. D-page-cap-and-checkpoint-boundary selected the name limit, which the public RPC uses, and selected has_more. Rows and tombstones count against the same cap, a page is a prefix of the (seq, table, pk) stream, and a page that holds every remaining entry closes the checkpoint. A page also stops once the server has examined its scan cap of candidates (_settings.max_pull_scan, default 5000), so a continuation page can hold fewer than limit entries. Integer >= 1.",
+      "kizunaStatus": "normative",
+      "minimum": 1,
+      "type": "integer"
+    },
+    "schema_version": {
+      "kizunaCites": [
+        "P:schema-version-signalling",
+        "SQL:pull-request-shape"
+      ],
+      "kizunaNote": "'Every RPC carries schema_version' (P:schema-version-signalling). Integer >= 1.",
+      "kizunaStatus": "normative",
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "buckets",
+    "cursor",
+    "schema_version"
+  ],
+  "type": "object"
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://v2-10-12.turborepo.dev/schema.json",
+  "ui": "tui",
+  "futureFlags": {
+    "experimentalCargoWorkspaces": true,
+    "experimentalTaskCommand": true
+  },
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/.env.local"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ],
+      "env": [
+        "EXPO_PUBLIC_TODO_EXPO_SUPABASE_ANON_KEY",
+        "EXPO_PUBLIC_TODO_EXPO_SUPABASE_PUBLISHABLE_KEY",
+        "EXPO_PUBLIC_TODO_EXPO_SUPABASE_URL",
+        "EXPO_PUBLIC_TODO_EXPO_TURNSTILE_SITE_KEY",
+        "KIZUNASYNC_REPO_ROOT",
+        "NEXT_PUBLIC_INSPECTOR_SUPABASE_ANON_KEY",
+        "NEXT_PUBLIC_INSPECTOR_SUPABASE_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_INSPECTOR_SUPABASE_URL",
+        "NEXT_PUBLIC_WEBSITE_GTM_ID",
+        "NEXT_PUBLIC_WEBSITE_SITE_URL",
+        "NEXT_PUBLIC_WEBSITE_TURNSTILE_SITE_KEY",
+        "TODO_EXPO_APPLE_TEAM_ID",
+        "VITE_DEMO_GTM_ID",
+        "VITE_DEMO_SUPABASE_PUBLISHABLE_KEY",
+        "VITE_DEMO_SUPABASE_URL",
+        "VITE_DEMO_TURNSTILE_SITE_KEY",
+        "VITE_TODO_REACT_SUPABASE_PUBLISHABLE_KEY",
+        "VITE_TODO_REACT_SUPABASE_URL",
+        "VITE_TODO_VUE_SUPABASE_PUBLISHABLE_KEY",
+        "VITE_TODO_VUE_SUPABASE_URL"
+      ],
+      "passThroughEnv": [
+        "INSPECTOR_SUPABASE_SERVICE_ROLE_KEY",
+        "INSPECTOR_SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ]
+    },
+    "dev": {
+      "dependsOn": [
+        "@kizunasync/supabase-pack#start"
+      ],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "EXPO_PUBLIC_TODO_EXPO_SUPABASE_ANON_KEY",
+        "EXPO_PUBLIC_TODO_EXPO_SUPABASE_PUBLISHABLE_KEY",
+        "EXPO_PUBLIC_TODO_EXPO_SUPABASE_URL",
+        "EXPO_PUBLIC_TODO_EXPO_TURNSTILE_SITE_KEY",
+        "INSPECTOR_SUPABASE_SERVICE_ROLE_KEY",
+        "INSPECTOR_SUPABASE_URL",
+        "KIZUNASYNC_REPO_ROOT",
+        "NEXT_PUBLIC_INSPECTOR_SUPABASE_ANON_KEY",
+        "NEXT_PUBLIC_INSPECTOR_SUPABASE_PUBLISHABLE_KEY",
+        "NEXT_PUBLIC_INSPECTOR_SUPABASE_URL",
+        "NEXT_PUBLIC_WEBSITE_SITE_URL",
+        "NEXT_PUBLIC_WEBSITE_TURNSTILE_SITE_KEY",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_PUBLISHABLE_KEY",
+        "SUPABASE_PUBLISHABLE_KEYS",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL",
+        "TODO_EXPO_APPLE_TEAM_ID",
+        "VITE_DEMO_SUPABASE_PUBLISHABLE_KEY",
+        "VITE_DEMO_SUPABASE_URL",
+        "VITE_DEMO_TURNSTILE_SITE_KEY",
+        "VITE_TODO_REACT_SUPABASE_PUBLISHABLE_KEY",
+        "VITE_TODO_REACT_SUPABASE_URL",
+        "VITE_TODO_VUE_SUPABASE_PUBLISHABLE_KEY",
+        "VITE_TODO_VUE_SUPABASE_URL",
+        "WEBSITE_CLICKUP_API_TOKEN",
+        "WEBSITE_CLICKUP_CONTACT_CHANNEL_ID",
+        "WEBSITE_CLICKUP_CONTACT_LIST_ID",
+        "WEBSITE_CLICKUP_WORKSPACE_ID",
+        "WEBSITE_TRUST_PROXY_HEADERS",
+        "WEBSITE_TURNSTILE_SECRET_KEY"
+      ]
+    },
+    "start": {
+      "cache": false
+    },
+    "stop": {
+      "cache": false
+    },
+    "status": {
+      "cache": false
+    },
+    "reset": {
+      "cache": false
+    },
+    "migrate": {
+      "cache": false
+    },
+    "test": {
+      "passThroughEnv": [
+        "SUPABASE_DB_URL"
+      ]
+    },
+    "kizunasync-cargo#test": {
+      "cache": true,
+      "dependsOn": [
+        "@kizunasync/supabase-pack#test"
+      ]
+    },
+    "type-check": {
+      "dependsOn": [
+        "^type-check"
+      ]
+    },
+    "check": {},
+    "lint": {},
+    "kizunasync-cargo#lint": {
+      "command": [
+        "cargo",
+        "clippy",
+        "--workspace",
+        "--all-targets",
+        "--locked",
+        "--features",
+        "kizunasync-ffi/http",
+        "--",
+        "-D",
+        "warnings",
+        "-D",
+        "clippy::unwrap_used",
+        "-D",
+        "clippy::expect_used",
+        "-D",
+        "clippy::panic"
+      ]
+    },
+    "format": {
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}
