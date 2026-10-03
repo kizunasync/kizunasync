@@ -1,0 +1,28 @@
+[package]
+name = "kizunasync-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Browser bridge for the Kizuna engine (wasm-bindgen)"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The crate body is behind `#![cfg(target_arch = "wasm32")]`, so a native
+# `--workspace` build compiles an empty lib and must not pull the browser stack
+# in with it.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+async-trait = { workspace = true }
+console_error_panic_hook = "0.1"
+js-sys = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+kizunasync-engine = { path = "../kizunasync-engine" }
+kizunasync-protocol = { path = "../kizunasync-protocol" }
+
+[lints]
+workspace = true

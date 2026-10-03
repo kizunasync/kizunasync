@@ -1,0 +1,98 @@
+# Kizuna Sync: public demo deployment.
+#
+# Builds apps/demo against the dedicated demo Supabase project and uploads
+# the static output to Vercel from a copy outside the git checkout, so Vercel
+# attaches no commit author; the Vercel project is not connected to git. Runs
+# as a step of release.yml's tag pipeline, or on manual dispatch. This
+# workflow carries no database credential.
+
+name: deploy-demo
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: false
+
+env:
+  # Pin the toolchain to the repo's packageManager (bun@1.4.2, package.json),
+  # same as ci.yml.
+  BUN_VERSION: 1.4.2
+
+jobs:
+  deploy-demo:
+    name: deploy-demo
+    # Same image as the other kizunasync-wasm consumers. The cache key ignores
+    # the Ubuntu version, and a glibc from 24.04 will not run on 22.04.
+    runs-on: ubuntu-22.04
+    environment:
+      name: demo
+      url: https://demo.kizunasync.com
+    steps:
+      # A called workflow's default checkout ref mirrors the caller event
+      # (the release tag), and manual dispatch checks out the ref it ran from.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # Same shared-key as ci.yml and rust-ci.yml's wasm-build job, so the
+      # wasm-bindgen CLI install below is a cache hit rather than a
+      # from-source build.
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-wasm
+          cache-on-failure: true
+
+      - uses: ./.github/actions/wasm-toolchain
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The demo Vite build bundles packages/web/src/worker.ts, which imports
+      # the generated wasm glue; that glue is git-ignored, so a fresh
+      # checkout has to make it before turbo reaches apps/demo.
+      - name: bun run cargo:wasm
+        run: bun run cargo:wasm
+
+      - name: Build the demo
+        env:
+          NODE_ENV: production
+          VITE_DEMO_SUPABASE_URL: ${{ vars.VITE_DEMO_SUPABASE_URL }}
+          VITE_DEMO_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_DEMO_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_DEMO_TURNSTILE_SITE_KEY: ${{ vars.VITE_DEMO_TURNSTILE_SITE_KEY }}
+          VITE_DEMO_GTM_ID: ${{ vars.VITE_DEMO_GTM_ID }}
+        run: bun run turbo run build --filter=@kizunasync/demo
+
+      # Vite copies apps/demo/public/vercel.json to the root of dist/, so a
+      # missing file here means the Vercel upload would publish incomplete
+      # or unconfigured output.
+      - name: Verify build output
+        run: |
+          set -euo pipefail
+          if [ ! -f apps/demo/dist/index.html ] || [ ! -f apps/demo/dist/vercel.json ]; then
+            echo "::error::apps/demo/dist is missing index.html or vercel.json; refusing to deploy incomplete output."
+            exit 1
+          fi
+
+      - name: Copy the build output outside the checkout
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/demo-deploy"
+          cp -R apps/demo/dist/. "$RUNNER_TEMP/demo-deploy/"
+
+      - name: Deploy to Vercel
+        working-directory: ${{ runner.temp }}/demo-deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bunx vercel deploy --prod --yes --token="$VERCEL_TOKEN"

@@ -1,0 +1,173 @@
+{
+  "case": "tombstones/004-bucket-move-out",
+  "cites": [
+    "D-bucket-move-out",
+    "P:keyset-pagination-and-delivery-bound",
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "step 4 moves row e1 from this user's bucket to another owner's (owner_id → user-b): the server records a tombstone for the bucket value the row left at seq 2, before the moved row at seq 3, in the same commit (D-bucket-move-out)",
+      "the step-5 pull names only the old bucket: it receives the tombstone and not the moved row, which is outside its bucket and the invoker's RLS scope, and the cursor advances past seq 3 because it tracks the global sequence horizon, not delivered rows (P:keyset-pagination-and-delivery-bound)",
+      "the tombstone removes e1 in the local transaction that commits the page and the cursor, so a device that pulls only the old bucket keeps no copy of a row that left it (P:cursor-monotonicity-rebase-and-atomic-checkpoints)"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 1,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "3"
+    },
+    {
+      "check": "local-row",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "row": null,
+      "table": "todos"
+    }
+  ],
+  "priority": "P1",
+  "status": "decided",
+  "steps": [
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "done": false,
+        "owner_id": "00000000-0000-4000-8000-a10000000001",
+        "title": "moving row"
+      },
+      "kind": "server",
+      "n": 1,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 2,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "1",
+        "has_more": false,
+        "rows": [
+          {
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "row": {
+              "done": false,
+              "owner_id": "00000000-0000-4000-8000-a10000000001",
+              "title": "moving row"
+            },
+            "seq": "1",
+            "table": "todos"
+          }
+        ],
+        "signal": null,
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "1"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": {
+            "done": false,
+            "owner_id": "00000000-0000-4000-8000-a10000000001",
+            "title": "moving row"
+          },
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 3
+    },
+    {
+      "actor": "00000000-0000-4000-8000-c10000000002",
+      "columns": {
+        "owner_id": "00000000-0000-4000-8000-a10000000002"
+      },
+      "kind": "server",
+      "n": 4,
+      "op": "upsert",
+      "pk": "00000000-0000-4000-8000-e10000000001",
+      "table": "todos"
+    },
+    {
+      "kind": "rpc",
+      "n": 5,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "1",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "3",
+        "has_more": false,
+        "rows": [],
+        "signal": null,
+        "tombstones": [
+          {
+            "deleted_at": "2026-01-01T00:00:04.000Z",
+            "pk": "00000000-0000-4000-8000-e10000000001",
+            "seq": "2",
+            "table": "todos"
+          }
+        ]
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "cursor",
+          "value": "3"
+        },
+        {
+          "check": "local-row",
+          "pk": "00000000-0000-4000-8000-e10000000001",
+          "row": null,
+          "table": "todos"
+        }
+      ],
+      "kind": "assert",
+      "n": 6
+    }
+  ],
+  "title": "a row that moves to another bucket leaves its old bucket a tombstone"
+}

@@ -1,0 +1,64 @@
+{
+  "name": "@kizunasync/expo",
+  "version": "0.2.6-alpha.3",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Kizuna React Native driver: names the expo-sqlite (or opt-in op-sqlite) file for the Rust kernel on device, delegates the web target to @kizunasync/web, and wraps NetInfo as the connectivity port.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kizunasync/kizunasync.git",
+    "directory": "packages/expo"
+  },
+  "homepage": "https://kizunasync.com/docs/reference/expo/introduction",
+  "keywords": ["supabase", "offline-first", "local-first", "sync", "sqlite"],
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./op-sqlite": "./src/op-sqlite-driver.ts",
+    "./file-store": "./src/file-store.ts",
+    "./transfer": "./src/transfer.ts"
+  },
+  "files": ["src", "!src/**/*.test.ts", "README.md"],
+  "scripts": {
+    "test": "bun test",
+    "type-check": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kizunasync/core": "workspace:*",
+    "@kizunasync/rn-uniffi": "workspace:*",
+    "@kizunasync/web": "workspace:*"
+  },
+  "peerDependencies": {
+    "@op-engineering/op-sqlite": "*",
+    "@react-native-community/netinfo": ">=11",
+    "@supabase/supabase-js": "^2.0.0",
+    "expo": "*",
+    "expo-asset": "*",
+    "expo-file-system": "*",
+    "expo-sqlite": "~57.0.2",
+    "react-native": ">=0.86.0"
+  },
+  "peerDependenciesMeta": {
+    "@op-engineering/op-sqlite": {
+      "optional": true
+    },
+    "@supabase/supabase-js": {
+      "optional": true
+    },
+    "expo-file-system": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@react-native-community/netinfo": "^11.5.2",
+    "@supabase/supabase-js": "^2.117.2",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "expo-asset": "~57.0.18",
+    "expo-sqlite": "~57.0.3",
+    "react-native": "0.87.1",
+    "typescript": "~7.0.2"
+  }
+}

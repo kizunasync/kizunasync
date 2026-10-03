@@ -1,0 +1,41 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../**/*.md"
+      ]
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "$TURBO_EXTENDS$",
+        "../../docs/**",
+        "../../GOVERNANCE.md",
+        "../../packages/*/package.json",
+        "../../Cargo.toml"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**"
+      ],
+      "env": [
+        "KIZUNASYNC_REPO_ROOT",
+        "NEXT_PUBLIC_WEBSITE_GTM_ID",
+        "NEXT_PUBLIC_WEBSITE_SITE_URL",
+        "NEXT_PUBLIC_WEBSITE_TURNSTILE_SITE_KEY"
+      ],
+      "passThroughEnv": [
+        "WEBSITE_CLICKUP_API_TOKEN",
+        "WEBSITE_CLICKUP_CONTACT_CHANNEL_ID",
+        "WEBSITE_CLICKUP_CONTACT_LIST_ID",
+        "WEBSITE_CLICKUP_WORKSPACE_ID",
+        "WEBSITE_TRUST_PROXY_HEADERS",
+        "WEBSITE_TURNSTILE_SECRET_KEY"
+      ]
+    }
+  }
+}

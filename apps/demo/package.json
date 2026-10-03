@@ -1,0 +1,36 @@
+{
+  "name": "@kizunasync/demo",
+  "version": "0.2.6-alpha.3",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "A demo app that live-syncs two browser-based databases with a Supabase backend. See real-time engine events and pull/push byte counts for each side, displayed clearly for easy comparison.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "type-check": "tsc -b",
+    "test": "bun test",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@heroui/react": "^3.2.6",
+    "@heroui/styles": "^3.2.6",
+    "@kizunasync/ui": "workspace:*",
+    "@kizunasync/utilities": "workspace:*",
+    "@supabase/supabase-js": "^2.117.2",
+    "kizunasync": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.1"
+  }
+}

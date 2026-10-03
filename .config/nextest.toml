@@ -1,0 +1,22 @@
+# cargo-nextest defaults for the Kizuna workspace.
+# Docs: https://nexte.st/docs/configuration/
+
+[profile.default]
+# Surface every failure in one run instead of stopping at the first.
+fail-fast = false
+failure-output = "immediate-final"
+success-output = "never"
+status-level = "fail"
+final-status-level = "slow"
+# The suite is in-memory SQLite and fake transports; anything this slow is a hang.
+slow-timeout = { period = "30s", terminate-after = 4 }
+
+[profile.ci]
+fail-fast = false
+failure-output = "immediate-final"
+status-level = "retry"
+# Only retry to distinguish a flake from a real failure; a green retry is still reported.
+retries = 1
+
+[profile.ci.junit]
+path = "junit.xml"

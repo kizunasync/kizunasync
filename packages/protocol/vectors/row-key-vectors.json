@@ -1,0 +1,140 @@
+{
+  "$comment": "Row-key text vectors (D-row-key). Each vector names a table's key columns in primary-key order, a row as Postgres to_jsonb renders it (or as a device writes it), and the pk text every implementation derives from them, byte for byte: one key column gives its component text, several give the JSON array of their component texts in the Postgres jsonb text form. The SQL pack (kizunasync._pk_text) and the Rust engine replay these vectors; a disagreement is a bug in the implementation, never a vector to relax.",
+  "vectors": [
+    {
+      "name": "a uuid key is the lowercase hyphenated uuid",
+      "key_columns": [
+        "id"
+      ],
+      "row": {
+        "id": "5f0c1c2e-8f3a-4b6d-9c1e-2a7b3c4d5e6f",
+        "title": "works on a plane"
+      },
+      "pk": "5f0c1c2e-8f3a-4b6d-9c1e-2a7b3c4d5e6f"
+    },
+    {
+      "name": "an integer key is its plain decimal",
+      "key_columns": [
+        "id"
+      ],
+      "row": {
+        "id": 42,
+        "title": "works on a plane"
+      },
+      "pk": "42"
+    },
+    {
+      "name": "a negative integer key keeps its minus sign",
+      "key_columns": [
+        "id"
+      ],
+      "row": {
+        "id": -7
+      },
+      "pk": "-7"
+    },
+    {
+      "name": "an integer key sent as a decimal string is that string",
+      "key_columns": [
+        "id"
+      ],
+      "row": {
+        "id": "9223372036854775807"
+      },
+      "pk": "9223372036854775807"
+    },
+    {
+      "name": "a text key is the text unchanged",
+      "key_columns": [
+        "slug"
+      ],
+      "row": {
+        "slug": "hello world"
+      },
+      "pk": "hello world"
+    },
+    {
+      "name": "a single text key is never escaped, even when it reads as JSON",
+      "key_columns": [
+        "slug"
+      ],
+      "row": {
+        "slug": "[\"1\", \"2\"]"
+      },
+      "pk": "[\"1\", \"2\"]"
+    },
+    {
+      "name": "a composite key is a JSON array of strings joined by comma and space",
+      "key_columns": [
+        "a",
+        "b"
+      ],
+      "row": {
+        "a": 1,
+        "b": 3456,
+        "title": "x"
+      },
+      "pk": "[\"1\", \"3456\"]"
+    },
+    {
+      "name": "a composite key follows the key column order, not the row order",
+      "key_columns": [
+        "b",
+        "a"
+      ],
+      "row": {
+        "a": 1,
+        "b": 3456
+      },
+      "pk": "[\"3456\", \"1\"]"
+    },
+    {
+      "name": "a composite component escapes a quote, a backslash, and a newline",
+      "key_columns": [
+        "label",
+        "n"
+      ],
+      "row": {
+        "label": "say \"hi\"\\now\n",
+        "n": 2
+      },
+      "pk": "[\"say \\\"hi\\\"\\\\now\\n\", \"2\"]"
+    },
+    {
+      "name": "a composite component escapes U+0001 as lowercase hex and keeps non-ASCII",
+      "key_columns": [
+        "label",
+        "n"
+      ],
+      "row": {
+        "label": "\u0001café 絆",
+        "n": 3
+      },
+      "pk": "[\"\\u0001café 絆\", \"3\"]"
+    },
+    {
+      "name": "a composite component uses the short escapes for tab, return, form feed, and backspace",
+      "key_columns": [
+        "label",
+        "n"
+      ],
+      "row": {
+        "label": "\t\r\f\b",
+        "n": 4
+      },
+      "pk": "[\"\\t\\r\\f\\b\", \"4\"]"
+    },
+    {
+      "name": "a composite key mixes a uuid and text",
+      "key_columns": [
+        "tenant",
+        "slug"
+      ],
+      "row": {
+        "slug": "a, b",
+        "tenant": "5f0c1c2e-8f3a-4b6d-9c1e-2a7b3c4d5e6f"
+      },
+      "pk": "[\"5f0c1c2e-8f3a-4b6d-9c1e-2a7b3c4d5e6f\", \"a, b\"]"
+    }
+  ]
+}

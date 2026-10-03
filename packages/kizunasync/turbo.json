@@ -1,0 +1,17 @@
+{
+  "$schema": "https://v2-10-12.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_EXTENDS$",
+        "$TURBO_ROOT$/packages/supabase-pack/pack.manifest.json",
+        "$TURBO_ROOT$/packages/supabase-pack/supabase/migrations/*.sql"
+      ],
+      "outputs": [
+        "dist/**",
+        "pack/**"
+      ]
+    }
+  }
+}

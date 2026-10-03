@@ -1,0 +1,79 @@
+{
+  "case": "lifecycle/002-reset-required",
+  "cites": [
+    "P:cursor-monotonicity-rebase-and-atomic-checkpoints",
+    "P:schema-version-signalling"
+  ],
+  "context": {
+    "client_id": "00000000-0000-4000-8000-c10000000001",
+    "notes": [
+      "the server's configured minimum (min_schema_version 2, SQL:config-min-schema-version) is above this client's schema_version 1: a breaking migration shipped while the client was old (P:schema-version-signalling additive/breaking dichotomy)",
+      "RESET_REQUIRED rides an empty page (I-8, D-signal-excludes-page-data); the client soft-blocks and prompts update (P:schema-version-signalling, never location.reload()); no further RPC is attempted and the cursor is untouched",
+      "the push-side stale-schema handshake mirrors this one: a stale push returns the same typed RESET_REQUIRED (D-schema-version-handshake decided): see lifecycle/003-push-stale-schema"
+    ],
+    "schema_version": 1,
+    "server": {
+      "min_schema_version": 2,
+      "tables": {
+        "todos": {
+          "bucket_column": "owner_id"
+        }
+      },
+      "tombstone_ttl_days": 30
+    },
+    "user_id": "00000000-0000-4000-8000-a10000000001"
+  },
+  "fencing": "shared",
+  "postconditions": [
+    {
+      "check": "cursor",
+      "value": "0"
+    }
+  ],
+  "priority": "P0",
+  "status": "normative",
+  "steps": [
+    {
+      "kind": "rpc",
+      "n": 1,
+      "request": {
+        "buckets": [
+          {
+            "params": {
+              "owner_id": "00000000-0000-4000-8000-a10000000001"
+            },
+            "table": "todos"
+          }
+        ],
+        "client_id": "00000000-0000-4000-8000-c10000000001",
+        "cursor": "0",
+        "schema_version": 1
+      },
+      "response": {
+        "cursor": "0",
+        "has_more": false,
+        "rows": [],
+        "signal": {
+          "type": "RESET_REQUIRED"
+        },
+        "tombstones": []
+      },
+      "rpc": "pull"
+    },
+    {
+      "checks": [
+        {
+          "check": "event",
+          "event": "RESET_REQUIRED"
+        },
+        {
+          "check": "cursor",
+          "value": "0"
+        }
+      ],
+      "kind": "assert",
+      "n": 2
+    }
+  ],
+  "title": "stale schema_version: typed RESET_REQUIRED, client soft-blocks"
+}

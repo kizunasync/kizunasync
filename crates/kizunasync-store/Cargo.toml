@@ -1,0 +1,44 @@
+[package]
+name = "kizunasync-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "SQLite local store for Kizuna Sync: rows, outbox, tombstones, attachments, and meta"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+kizunasync-protocol = { path = "../kizunasync-protocol" }
+
+# Native keeps the workspace `bundled` SQLite so every host builds one known C library.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true }
+
+# wasm32 cannot link `bundled`: there the C library comes from sqlite-wasm-rs, which
+# rusqlite binds through `ffi-sqlite-wasm-rs` instead of libsqlite3-sys.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rusqlite = { version = "0.40", default-features = false, features = ["ffi-sqlite-wasm-rs"] }
+# The SQLite build rusqlite links on wasm32, declared directly so the version is pinned
+# here and the VFS registration API `wasm_vfs.rs` uses is in scope; 0.5.2 is the
+# floor sqlite-wasm-vfs 0.2 requires. The wasm rusqlite drops the `cache` default feature,
+# so statement caching exists on native only; no call site uses `prepare_cached`.
+sqlite-wasm-rs = { version = "0.5.5", default-features = false }
+# Persistent VFS registrations (OPFS SAH pool, relaxed IndexedDB) for the wasm store opener.
+sqlite-wasm-vfs = { version = "0.2" }
+# Already pulled in transitively by sqlite-wasm-rs/sqlite-wasm-vfs at these
+# versions; named directly here to classify OPFS DOMException names
+# (js-sys, wasm-bindgen) and to retry a busy sahpool install without blocking,
+# via a non-blocking setTimeout (wasm-bindgen-futures, web-sys WorkerGlobalScope).
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["WorkerGlobalScope"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

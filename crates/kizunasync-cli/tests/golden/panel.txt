@@ -1,0 +1,39 @@
+┌  Kizuna Sync · local stack
+│
+│  Pack        0.2.6-alpha.3 · matches this CLI
+│  Tables      2 synced · todos (read-write, key id) ·
+│              notes (pull-only, key id)
+│  Jobs        3 scheduled · last compact 12 min ago
+│  Clients     4 registered · 1 active in the last hour
+│
+◆  What do you want to do?
+│  ● Synced tables          add, remove or change what syncs
+│  ○ Project settings       batch size, retention, schedules
+│  ○ Update the pack        up to date · re-apply to restore dropped objects
+│  ○ Health check           run every doctor check
+│  ○ Status                 full report
+│  ○ Background jobs        list, run now, reschedule
+│  ○ Pending migrations     classify additive vs breaking
+│  ○ Remove Kizuna          deprovision, with a dry run first
+│  ○ Exit
+└
+
+┌  Kizuna Sync · project abcdefghijklmnopqrst · Management API
+│
+│  Pack        0.2.6-alpha.3 · matches this CLI
+│  Tables      2 synced · todos (read-write, key id) ·
+│              notes (pull-only, key id)
+│  Jobs        3 scheduled · last compact 12 min ago
+│  Clients     4 registered · 1 active in the last hour
+│
+◆  What do you want to do?
+│  ● Synced tables          add, remove or change what syncs
+│  ○ Project settings       batch size, retention, schedules
+│  ○ Update the pack        up to date · re-apply to restore dropped objects
+│  ○ Health check           run every doctor check
+│  ○ Status                 full report
+│  ○ Background jobs        unavailable over the Management API: needs a direct Postgres connection
+│  ○ Pending migrations     classify additive vs breaking
+│  ○ Remove Kizuna          unavailable over the Management API: needs a direct Postgres connection
+│  ○ Exit
+└

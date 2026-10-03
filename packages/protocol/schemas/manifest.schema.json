@@ -1,0 +1,145 @@
+{
+  "$id": "https://schemas.kizunasync.dev/manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "kizunaCites": [
+    "P:the-golden-corpus-and-deterministic-placeholders"
+  ],
+  "kizunaNote": "cases/manifest.json: the full case registry. Invariant I-12 gives every transcript file exactly one entry. Every executable entry names its transcript in file; blocked entries use file:null and blocked_on ids from decisions/index.json.",
+  "kizunaStatus": "proposed",
+  "properties": {
+    "cases": {
+      "items": {
+        "additionalProperties": false,
+        "kizunaStatus": "proposed",
+        "properties": {
+          "blocked_on": {
+            "items": {
+              "pattern": "^D-[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            },
+            "kizunaNote": "Present iff the case is blocked (file null, no files): the gated/blocked open decisions that make its bytes unspecifiable.",
+            "kizunaStatus": "proposed",
+            "minItems": 1,
+            "type": "array"
+          },
+          "cites": {
+            "items": {
+              "pattern": "^((SQL:|CONV:|P:|A:|DR:|DX:|AT:)[a-z][a-z0-9]*(-[a-z0-9]+)*$|D-[a-z][a-z0-9]*(-[a-z0-9]+)*$)",
+              "type": "string"
+            },
+            "kizunaNote": "Same citation grammar as transcripts (invariant I-7).",
+            "kizunaStatus": "proposed",
+            "minItems": 1,
+            "type": "array"
+          },
+          "fencing": {
+            "enum": [
+              "shared"
+            ],
+            "kizunaCites": [
+              "P:keyset-pagination-and-delivery-bound"
+            ],
+            "kizunaNote": "shared = one transcript serves every case: the corpus has one fencing mechanism, the Postgres transaction-visibility horizon D-visibility-horizon decided. The fencing family's transcripts live under transcripts/fencing.",
+            "kizunaStatus": "proposed",
+            "type": "string"
+          },
+          "file": {
+            "kizunaNote": "Path relative to packages/protocol/. null for blocked entries (see blocked_on).",
+            "kizunaStatus": "proposed",
+            "oneOf": [
+              {
+                "pattern": "^transcripts/(array|conflict|fencing|increment|lifecycle|pull|push|rebase|tombstones|wakeup)/[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*\\.json$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "kizunaNote": "Equals the case field of the transcript file(s) (invariant I-12).",
+            "kizunaStatus": "proposed",
+            "pattern": "^(array|conflict|fencing|increment|lifecycle|pull|push|rebase|tombstones|wakeup)/[0-9]{3}-[a-z0-9]+(-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "kizunaStatus": "proposed",
+            "type": "array"
+          },
+          "priority": {
+            "enum": [
+              "P0",
+              "P1",
+              "P2"
+            ],
+            "kizunaStatus": "proposed",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "normative",
+              "proposed",
+              "open-decision",
+              "decided"
+            ],
+            "kizunaStatus": "proposed",
+            "type": "string"
+          },
+          "title": {
+            "kizunaStatus": "proposed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cites",
+          "fencing",
+          "file",
+          "id",
+          "priority",
+          "status",
+          "title"
+        ],
+        "type": "object"
+      },
+      "kizunaStatus": "proposed",
+      "minItems": 1,
+      "type": "array"
+    },
+    "future_flows": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "cites": {
+            "items": {
+              "pattern": "^((SQL:|CONV:|P:|A:|DR:|DX:|AT:)[a-z][a-z0-9]*(-[a-z0-9]+)*$|D-[a-z][a-z0-9]*(-[a-z0-9]+)*$)",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "type": "object"
+      },
+      "kizunaCites": [
+        "P:attachments-are-out-of-protocol-scope"
+      ],
+      "kizunaNote": "Flows with no corpus bytes because an open decision prevents a transcript. The current array is empty; resolved features are not retained here as future work.",
+      "kizunaStatus": "proposed",
+      "type": "array"
+    }
+  },
+  "required": [
+    "cases",
+    "future_flows"
+  ],
+  "type": "object"
+}

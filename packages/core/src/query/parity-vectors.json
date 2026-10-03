@@ -1,0 +1,1586 @@
+{
+  "$comment": "The shared local-query parity oracle: the regression fixture of the one evaluator. One vector = { name, rows, plan, expected } where plan is the QueryPlan JSON kizunasync-query::apply_query accepts and expected lists the result row ids in result order. expectError marks a plan the evaluator refuses and expectCode names the engine error code it refuses it with. Consumed by the Rust runner crates/kizunasync-query/tests/parity_vectors.rs and the TypeScript runner packages/core/src/query/parity-vectors.test.ts, never duplicated.",
+  "vectors": [
+    {
+      "name": "eq: string column",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "title", "value": "Alpha" }] },
+      "expected": ["p1"]
+    },
+    {
+      "name": "eq: number column",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "rank", "value": 10 }] },
+      "expected": ["p2"]
+    },
+    {
+      "name": "eq: boolean column",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "done", "value": true }] },
+      "expected": ["p2", "p4"]
+    },
+    {
+      "name": "eq null: matches no row, not even an explicit null (SQL = NULL)",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "note", "value": null }] },
+      "expected": []
+    },
+    {
+      "name": "eq: unknown column never matches",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "nope", "value": "x" }] },
+      "expected": []
+    },
+    {
+      "name": "neq null: matches no row (SQL <> NULL)",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "neq", "column": "note", "value": null }] },
+      "expected": []
+    },
+    {
+      "name": "neq: number, a null cell is unknown and never matches",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "neq", "column": "rank", "value": 2 }] },
+      "expected": ["p2", "p3"]
+    },
+    {
+      "name": "neq: a null or absent cell never matches",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "neq", "column": "note", "value": "hi" }] },
+      "expected": ["p4"]
+    },
+    {
+      "name": "gt: numbers",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "gt", "column": "rank", "value": 1 }] },
+      "expected": ["p1", "p2"]
+    },
+    {
+      "name": "gte: numbers",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "gte", "column": "rank", "value": 2 }] },
+      "expected": ["p1", "p2"]
+    },
+    {
+      "name": "lt: numbers",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "lt", "column": "rank", "value": 2 }] },
+      "expected": ["p3"]
+    },
+    {
+      "name": "lte: numbers",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "lte", "column": "rank", "value": 2 }] },
+      "expected": ["p1", "p3"]
+    },
+    {
+      "name": "gt: a null cell never matches a range",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "gt", "column": "rank", "value": 0 }] },
+      "expected": ["p1", "p2", "p3"]
+    },
+    {
+      "name": "gt: an absent column never matches a range",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" }
+      ],
+      "plan": { "filters": [{ "kind": "gt", "column": "nope", "value": 0 }] },
+      "expected": []
+    },
+    {
+      "name": "gt: strings compare lexicographically",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "gt", "column": "title", "value": "b" }] },
+      "expected": ["p2", "p4"]
+    },
+    {
+      "name": "lte: strings compare lexicographically (uppercase sorts before lowercase)",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "lte", "column": "title", "value": "beta" }] },
+      "expected": ["p1", "p2", "p3"]
+    },
+    {
+      "name": "eq: a number never equals its numeric string",
+      "rows": [
+        { "id": "n1", "v": 1 },
+        { "id": "n2", "v": 10 },
+        { "id": "n3", "v": 2 },
+        { "id": "n4", "v": "10" },
+        { "id": "n5", "v": -5 }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "v", "value": "10" }] },
+      "expected": ["n4"]
+    },
+    {
+      "name": "gte: mixed number/string operands compare as text",
+      "rows": [
+        { "id": "n1", "v": 1 },
+        { "id": "n2", "v": 10 },
+        { "id": "n3", "v": 2 },
+        { "id": "n4", "v": "10" },
+        { "id": "n5", "v": -5 }
+      ],
+      "plan": { "filters": [{ "kind": "gte", "column": "v", "value": "10" }] },
+      "expected": ["n2", "n3", "n4"]
+    },
+    {
+      "name": "gt: numeric string cell against a number operand compares as text",
+      "rows": [
+        { "id": "n1", "v": 1 },
+        { "id": "n2", "v": 10 },
+        { "id": "n3", "v": 2 },
+        { "id": "n4", "v": "10" },
+        { "id": "n5", "v": -5 }
+      ],
+      "plan": { "filters": [{ "kind": "gt", "column": "v", "value": 1 }] },
+      "expected": ["n2", "n3", "n4"]
+    },
+    {
+      "name": "gt: floats compare exactly (no epsilon window)",
+      "rows": [
+        { "id": "f1", "v": 0.30000000000000004 },
+        { "id": "f2", "v": 0.3 }
+      ],
+      "plan": { "filters": [{ "kind": "gt", "column": "v", "value": 0.3 }] },
+      "expected": ["f1"]
+    },
+    {
+      "name": "lt: negative numbers",
+      "rows": [
+        { "id": "n1", "v": 1 },
+        { "id": "n2", "v": 10 },
+        { "id": "n3", "v": 2 },
+        { "id": "n5", "v": -5 }
+      ],
+      "plan": { "filters": [{ "kind": "lt", "column": "v", "value": 0 }] },
+      "expected": ["n5"]
+    },
+    {
+      "name": "like: prefix is case sensitive",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" },
+        { "id": "t4", "title": "100% pure" },
+        { "id": "t5", "title": "a_b" },
+        { "id": "t6", "title": "axb" },
+        { "id": "t7", "title": "Ünïcödé" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "Hello%" }] },
+      "expected": ["t1"]
+    },
+    {
+      "name": "like: lowercase pattern only matches the lowercase row",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "hello%" }] },
+      "expected": ["t2"]
+    },
+    {
+      "name": "ilike: same pattern matches both cases",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": { "filters": [{ "kind": "ilike", "column": "title", "pattern": "hello%" }] },
+      "expected": ["t1", "t2"]
+    },
+    {
+      "name": "like: underscore matches any single character",
+      "rows": [
+        { "id": "t5", "title": "a_b" },
+        { "id": "t6", "title": "axb" },
+        { "id": "t7", "title": "ab" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "a_b" }] },
+      "expected": ["t5", "t6"]
+    },
+    {
+      "name": "like: backslash escapes underscore to a literal",
+      "rows": [
+        { "id": "t5", "title": "a_b" },
+        { "id": "t6", "title": "axb" },
+        { "id": "t7", "title": "ab" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "a\\_b" }] },
+      "expected": ["t5"]
+    },
+    {
+      "name": "like: backslash escapes percent to a literal",
+      "rows": [
+        { "id": "t4", "title": "100% pure" },
+        { "id": "t5", "title": "100x pure" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "100\\% pure" }] },
+      "expected": ["t4"]
+    },
+    {
+      "name": "like: bare % matches every non-null text cell",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" },
+        { "id": "t4", "title": "100% pure" },
+        { "id": "t5", "title": "a_b" },
+        { "id": "t6", "title": "axb" },
+        { "id": "t7", "title": "Ünïcödé" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "%" }] },
+      "expected": ["t1", "t2", "t3", "t4", "t5", "t6", "t7"]
+    },
+    {
+      "name": "like: surrounding % matches a case-sensitive substring",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "%World%" }] },
+      "expected": ["t1", "t3"]
+    },
+    {
+      "name": "ilike: surrounding % matches a case-insensitive substring",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": { "filters": [{ "kind": "ilike", "column": "title", "pattern": "%world%" }] },
+      "expected": ["t1", "t2", "t3"]
+    },
+    {
+      "name": "ilike: unicode case folding",
+      "rows": [
+        { "id": "t7", "title": "Ünïcödé" },
+        { "id": "t8", "title": "unicode" }
+      ],
+      "plan": { "filters": [{ "kind": "ilike", "column": "title", "pattern": "ünïcödé" }] },
+      "expected": ["t7"]
+    },
+    {
+      "name": "like: a number cell is matched as its text form",
+      "rows": [
+        { "id": "n1", "v": 100 },
+        { "id": "n2", "v": 200 },
+        { "id": "n3", "v": null }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "v", "pattern": "1%" }] },
+      "expected": ["n1"]
+    },
+    {
+      "name": "is: null matches explicit null and absent column",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "is", "column": "note", "value": null }] },
+      "expected": ["p1", "p3"]
+    },
+    {
+      "name": "is: true",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "is", "column": "done", "value": true }] },
+      "expected": ["p2", "p4"]
+    },
+    {
+      "name": "is: false",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "is", "column": "done", "value": false }] },
+      "expected": ["p1", "p3"]
+    },
+    {
+      "name": "is: null on a column no row carries matches every row",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "is", "column": "nope", "value": null }] },
+      "expected": ["p1", "p2", "p3", "p4"]
+    },
+    {
+      "name": "is: true never matches a non-boolean cell",
+      "rows": [
+        { "id": "p1", "done": "true" },
+        { "id": "p2", "done": 1 },
+        { "id": "p3", "done": true }
+      ],
+      "plan": { "filters": [{ "kind": "is", "column": "done", "value": true }] },
+      "expected": ["p3"]
+    },
+    {
+      "name": "in: string membership",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "in", "column": "id", "values": ["p1", "p3", "zz"] }] },
+      "expected": ["p1", "p3"]
+    },
+    {
+      "name": "in: number membership",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "in", "column": "rank", "values": [1, 10] }] },
+      "expected": ["p2", "p3"]
+    },
+    {
+      "name": "in: an empty list matches nothing",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": { "filters": [{ "kind": "in", "column": "id", "values": [] }] },
+      "expected": []
+    },
+    {
+      "name": "in: a null member matches no row, not even an explicit null",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "in", "column": "note", "values": [null, "hi"] }] },
+      "expected": ["p2"]
+    },
+    {
+      "name": "not: eq",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "not", "filter": { "kind": "eq", "column": "rank", "value": 2 } }]
+      },
+      "expected": ["p2", "p3"]
+    },
+    {
+      "name": "not: in",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "not", "filter": { "kind": "in", "column": "id", "values": ["p1"] } }
+        ]
+      },
+      "expected": ["p2", "p3", "p4"]
+    },
+    {
+      "name": "not: is null",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "not", "filter": { "kind": "is", "column": "note", "value": null } }
+        ]
+      },
+      "expected": ["p2", "p4"]
+    },
+    {
+      "name": "not: like keeps every text cell the pattern rejects",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "not", "filter": { "kind": "like", "column": "title", "pattern": "A%" } }
+        ]
+      },
+      "expected": ["p2", "p3", "p4"]
+    },
+    {
+      "name": "not: like drops a null or absent cell (not of unknown is unknown)",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "not", "filter": { "kind": "like", "column": "note", "pattern": "h%" } }
+        ]
+      },
+      "expected": ["p4"]
+    },
+    {
+      "name": "not: gt drops a null cell",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "not", "filter": { "kind": "gt", "column": "rank", "value": 1 } }]
+      },
+      "expected": ["p3"]
+    },
+    {
+      "name": "not: in with a null member matches no row (SQL NOT IN)",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "not", "filter": { "kind": "in", "column": "rank", "values": [2, null] } }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "or: two clauses",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "or",
+            "filters": [
+              { "kind": "eq", "column": "rank", "value": 1 },
+              { "kind": "eq", "column": "done", "value": true }
+            ]
+          }
+        ]
+      },
+      "expected": ["p2", "p3", "p4"]
+    },
+    {
+      "name": "or: is null clause",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "or",
+            "filters": [
+              { "kind": "is", "column": "note", "value": null },
+              { "kind": "eq", "column": "rank", "value": 10 }
+            ]
+          }
+        ]
+      },
+      "expected": ["p1", "p2", "p3"]
+    },
+    {
+      "name": "or: in(...) clause",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "or",
+            "filters": [
+              { "kind": "in", "column": "id", "values": ["p1", "p4"] },
+              { "kind": "gt", "column": "rank", "value": 5 }
+            ]
+          }
+        ]
+      },
+      "expected": ["p1", "p2", "p4"]
+    },
+    {
+      "name": "or: a quoted value keeps its comma",
+      "rows": [
+        { "id": "q1", "title": "a,b" },
+        { "id": "q2", "title": "c" },
+        { "id": "q3", "title": "d" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "or",
+            "filters": [
+              { "kind": "eq", "column": "title", "value": "a,b" },
+              { "kind": "eq", "column": "title", "value": "c" }
+            ]
+          }
+        ]
+      },
+      "expected": ["q1", "q2"]
+    },
+    {
+      "name": "or: an empty clause list matches nothing",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": { "filters": [{ "kind": "or", "filters": [] }] },
+      "expected": []
+    },
+    {
+      "name": "and: two clauses",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "and",
+            "filters": [
+              { "kind": "eq", "column": "done", "value": false },
+              { "kind": "gt", "column": "rank", "value": 1 }
+            ]
+          }
+        ]
+      },
+      "expected": ["p1"]
+    },
+    {
+      "name": "and: ilike clause plus range",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "and",
+            "filters": [
+              { "kind": "ilike", "column": "title", "pattern": "%a%" },
+              { "kind": "gte", "column": "rank", "value": 1 }
+            ]
+          }
+        ]
+      },
+      "expected": ["p1", "p2", "p3"]
+    },
+    {
+      "name": "and: an empty clause list matches every row",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": { "filters": [{ "kind": "and", "filters": [] }] },
+      "expected": ["p1", "p2"]
+    },
+    {
+      "name": "root filters AND together",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "gt", "column": "rank", "value": 1 },
+          { "kind": "lt", "column": "rank", "value": 10 }
+        ]
+      },
+      "expected": ["p1"]
+    },
+    {
+      "name": "or clause ANDed with a chained eq",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "or",
+            "filters": [
+              { "kind": "eq", "column": "id", "value": "p1" },
+              { "kind": "eq", "column": "id", "value": "p2" }
+            ]
+          },
+          { "kind": "eq", "column": "done", "value": true }
+        ]
+      },
+      "expected": ["p2"]
+    },
+    {
+      "name": "contains: array element in a JSON-string cell",
+      "rows": [
+        { "id": "j1", "tags": "[\"a\",\"b\"]", "meta": "{\"k\":1,\"nested\":{\"x\":true}}" },
+        { "id": "j2", "tags": "[\"a\"]", "meta": "{\"k\":2}" },
+        { "id": "j3", "tags": "[]", "meta": "{}" },
+        { "id": "j4", "tags": null, "meta": null },
+        { "id": "j5" }
+      ],
+      "plan": { "filters": [{ "kind": "contains", "column": "tags", "value": ["a"] }] },
+      "expected": ["j1", "j2"]
+    },
+    {
+      "name": "contains: every needle element must be present",
+      "rows": [
+        { "id": "j1", "tags": "[\"a\",\"b\"]" },
+        { "id": "j2", "tags": "[\"a\"]" },
+        { "id": "j3", "tags": "[]" }
+      ],
+      "plan": { "filters": [{ "kind": "contains", "column": "tags", "value": ["a", "c"] }] },
+      "expected": []
+    },
+    {
+      "name": "contains: both needle elements present",
+      "rows": [
+        { "id": "j1", "tags": "[\"a\",\"b\"]" },
+        { "id": "j2", "tags": "[\"a\"]" },
+        { "id": "j3", "tags": "[]" }
+      ],
+      "plan": { "filters": [{ "kind": "contains", "column": "tags", "value": ["a", "b"] }] },
+      "expected": ["j1"]
+    },
+    {
+      "name": "contains: object key/value",
+      "rows": [
+        { "id": "j1", "meta": "{\"k\":1,\"nested\":{\"x\":true}}" },
+        { "id": "j2", "meta": "{\"k\":2}" },
+        { "id": "j3", "meta": "{}" },
+        { "id": "j4", "meta": null }
+      ],
+      "plan": { "filters": [{ "kind": "contains", "column": "meta", "value": { "k": 1 } }] },
+      "expected": ["j1"]
+    },
+    {
+      "name": "contains: nested object recurses",
+      "rows": [
+        { "id": "j1", "meta": "{\"k\":1,\"nested\":{\"x\":true}}" },
+        { "id": "j2", "meta": "{\"nested\":{\"x\":false}}" },
+        { "id": "j3", "meta": "{\"nested\":{\"x\":true,\"y\":1}}" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "contains", "column": "meta", "value": { "nested": { "x": true } } }
+        ]
+      },
+      "expected": ["j1", "j3"]
+    },
+    {
+      "name": "contains: an empty array needle matches every array cell",
+      "rows": [
+        { "id": "j1", "tags": "[\"a\",\"b\"]" },
+        { "id": "j2", "tags": "[\"a\"]" },
+        { "id": "j3", "tags": "[]" },
+        { "id": "j4", "tags": null },
+        { "id": "j5" }
+      ],
+      "plan": { "filters": [{ "kind": "contains", "column": "tags", "value": [] }] },
+      "expected": ["j1", "j2", "j3"]
+    },
+    {
+      "name": "contains: scalar needle deep-equals the decoded cell",
+      "rows": [
+        { "id": "s1", "v": "plain" },
+        { "id": "s2", "v": 5 },
+        { "id": "s3", "v": null }
+      ],
+      "plan": { "filters": [{ "kind": "contains", "column": "v", "value": "plain" }] },
+      "expected": ["s1"]
+    },
+    {
+      "name": "containedBy: cell array is a subset of the needle",
+      "rows": [
+        { "id": "j1", "tags": "[\"a\",\"b\"]" },
+        { "id": "j2", "tags": "[\"a\"]" },
+        { "id": "j3", "tags": "[]" },
+        { "id": "j4", "tags": null },
+        { "id": "j5" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "containedBy", "column": "tags", "value": ["a", "b", "c"] }]
+      },
+      "expected": ["j1", "j2", "j3"]
+    },
+    {
+      "name": "containedBy: a larger cell array is not contained",
+      "rows": [
+        { "id": "j1", "tags": "[\"a\",\"b\"]" },
+        { "id": "j2", "tags": "[\"a\"]" },
+        { "id": "j3", "tags": "[]" }
+      ],
+      "plan": { "filters": [{ "kind": "containedBy", "column": "tags", "value": ["a"] }] },
+      "expected": ["j2", "j3"]
+    },
+    {
+      "name": "containedBy: object cell inside a wider needle object",
+      "rows": [
+        { "id": "j1", "meta": "{\"k\":1}" },
+        { "id": "j2", "meta": "{\"k\":1,\"z\":9}" },
+        { "id": "j3", "meta": "{}" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "containedBy", "column": "meta", "value": { "k": 1, "w": 2 } }]
+      },
+      "expected": ["j1", "j3"]
+    },
+    {
+      "name": "search: default columns cover every string/number cell",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "alp", "columns": null }] },
+      "expected": ["p1"]
+    },
+    {
+      "name": "search: restricted to columns that do not carry the needle",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "alp", "columns": ["id"] }] },
+      "expected": []
+    },
+    {
+      "name": "search: a blank query matches every row",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "   ", "columns": null }] },
+      "expected": ["p1", "p2", "p3", "p4"]
+    },
+    {
+      "name": "search: number cells are searched as text",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "10", "columns": null }] },
+      "expected": ["p2"]
+    },
+    {
+      "name": "search: case insensitive",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" },
+        { "id": "t4", "title": "nothing" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "WORLD", "columns": null }] },
+      "expected": ["t1", "t2", "t3"]
+    },
+    {
+      "name": "search: boolean cells are only reachable through explicit columns",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "true", "columns": ["done"] }] },
+      "expected": ["p2", "p4"]
+    },
+    {
+      "name": "search: a unicode needle",
+      "rows": [
+        { "id": "u1", "title": "日本語" },
+        { "id": "u2", "title": "にほんご" }
+      ],
+      "plan": { "filters": [{ "kind": "search", "query": "ほん", "columns": null }] },
+      "expected": ["u2"]
+    },
+    {
+      "name": "textSearch plain: every token must appear, order free",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" },
+        { "id": "t4", "title": "nothing" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "textSearch", "column": "title", "query": "world hello", "type": "plain" }
+        ]
+      },
+      "expected": ["t1", "t2", "t3"]
+    },
+    {
+      "name": "textSearch plain: a missing token rejects the row",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "textSearch", "column": "title", "query": "hello gamma", "type": "plain" }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "textSearch phrase: the whole query must appear contiguously",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "textSearch", "column": "title", "query": "hello world", "type": "phrase" }
+        ]
+      },
+      "expected": ["t1", "t2"]
+    },
+    {
+      "name": "textSearch phrase: reordered words do not match",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "textSearch",
+            "column": "title",
+            "query": "world wide hello",
+            "type": "phrase"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "textSearch websearch: a quoted phrase is indivisible",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "textSearch",
+            "column": "title",
+            "query": "\"hello world\"",
+            "type": "websearch"
+          }
+        ]
+      },
+      "expected": ["t1", "t2"]
+    },
+    {
+      "name": "textSearch websearch: quoted phrase plus a bare token",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "textSearch",
+            "column": "title",
+            "query": "\"hello world\" wide",
+            "type": "websearch"
+          }
+        ]
+      },
+      "expected": ["t2"]
+    },
+    {
+      "name": "textSearch websearch: bare tokens behave like plain",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t3", "title": "World hello" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "textSearch",
+            "column": "title",
+            "query": "wide hello",
+            "type": "websearch"
+          }
+        ]
+      },
+      "expected": ["t2"]
+    },
+    {
+      "name": "textSearch: a blank query matches every non-null text cell",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t2", "title": "hello world wide" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "textSearch", "column": "title", "query": "  ", "type": "plain" }]
+      },
+      "expected": ["t1", "t2"]
+    },
+    {
+      "name": "textSearch: a null cell never matches",
+      "rows": [
+        { "id": "t1", "title": "Hello World" },
+        { "id": "t8", "title": null },
+        { "id": "t9" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "textSearch", "column": "title", "query": "hello", "type": "plain" }]
+      },
+      "expected": ["t1"]
+    },
+    {
+      "name": "order: ascending puts nulls last by default",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": { "orders": [{ "column": "rank", "ascending": true }] },
+      "expected": ["o3", "o1", "o2", "o4"]
+    },
+    {
+      "name": "order: descending keeps nulls last by default",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": { "orders": [{ "column": "rank", "ascending": false }] },
+      "expected": ["o1", "o3", "o2", "o4"]
+    },
+    {
+      "name": "order: ascending with nulls first",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": { "orders": [{ "column": "rank", "ascending": true, "nullsFirst": true }] },
+      "expected": ["o2", "o4", "o3", "o1"]
+    },
+    {
+      "name": "order: descending with nullsFirst:false inverts to nulls first",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": { "orders": [{ "column": "rank", "ascending": false, "nullsFirst": false }] },
+      "expected": ["o2", "o4", "o1", "o3"]
+    },
+    {
+      "name": "order: strings ascending",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": { "orders": [{ "column": "name", "ascending": true }] },
+      "expected": ["o2", "o1", "o3", "o4"]
+    },
+    {
+      "name": "order: booleans ascending (false before true)",
+      "rows": [
+        { "id": "b1", "done": true },
+        { "id": "b2", "done": false },
+        { "id": "b3", "done": true }
+      ],
+      "plan": { "orders": [{ "column": "done", "ascending": true }] },
+      "expected": ["b2", "b1", "b3"]
+    },
+    {
+      "name": "order: two keys, the last one is the tiebreaker",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" }
+      ],
+      "plan": {
+        "orders": [
+          { "column": "done", "ascending": true },
+          { "column": "rank", "ascending": false }
+        ]
+      },
+      "expected": ["p1", "p3", "p2", "p4"]
+    },
+    {
+      "name": "order: filtered then ordered",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "gt", "column": "rank", "value": 0 }],
+        "orders": [{ "column": "rank", "ascending": false }]
+      },
+      "expected": ["o1", "o3"]
+    },
+    {
+      "name": "limit: truncates after ordering",
+      "rows": [
+        { "id": "o1", "rank": 2, "name": "b" },
+        { "id": "o2", "rank": null, "name": "a" },
+        { "id": "o3", "rank": 1, "name": "c" },
+        { "id": "o4", "name": "d" }
+      ],
+      "plan": { "orders": [{ "column": "rank", "ascending": true }], "limit": 2 },
+      "expected": ["o3", "o1"]
+    },
+    {
+      "name": "limit: without an order keeps input order",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" },
+        { "id": "p3", "title": "Gamma" },
+        { "id": "p4", "title": "delta" }
+      ],
+      "plan": { "limit": 2 },
+      "expected": ["p1", "p2"]
+    },
+    {
+      "name": "limit: zero returns nothing",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": { "limit": 0 },
+      "expected": []
+    },
+    {
+      "name": "limit: larger than the result set is a no-op",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": { "limit": 50 },
+      "expected": ["p1", "p2"]
+    },
+    {
+      "name": "projection: selected columns only",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" }
+      ],
+      "plan": { "projection": ["id", "title"] },
+      "expected": ["p1", "p2"]
+    },
+    {
+      "name": "projection: an unknown column projects null",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" }
+      ],
+      "plan": { "projection": ["id", "nope"], "filters": [{ "kind": "eq", "column": "rank", "value": 10 }] },
+      "expected": ["p2"]
+    },
+    {
+      "name": "single: exactly one row",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "id", "value": "p1" }],
+        "cardinality": "single"
+      },
+      "expected": ["p1"]
+    },
+    {
+      "name": "single: zero rows violates cardinality",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "id", "value": "zz" }],
+        "cardinality": "single"
+      },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_CONSTRAINT"
+    },
+    {
+      "name": "single: more than one row violates cardinality",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "done": false },
+        { "id": "p2", "title": "beta", "done": true },
+        { "id": "p3", "title": "Gamma", "done": false }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "done", "value": false }],
+        "cardinality": "single"
+      },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_CONSTRAINT"
+    },
+    {
+      "name": "single: limit 1 makes a multi-match query legal",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "done": false },
+        { "id": "p2", "title": "beta", "done": true },
+        { "id": "p3", "title": "Gamma", "done": false }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "done", "value": false }],
+        "limit": 1,
+        "cardinality": "single"
+      },
+      "expected": ["p1"]
+    },
+    {
+      "name": "maybeSingle: one row",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "id", "value": "p2" }],
+        "cardinality": "maybeSingle"
+      },
+      "expected": ["p2"]
+    },
+    {
+      "name": "maybeSingle: zero rows is legal",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "id", "value": "zz" }],
+        "cardinality": "maybeSingle"
+      },
+      "expected": []
+    },
+    {
+      "name": "maybeSingle: more than one row violates cardinality",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "done": false },
+        { "id": "p2", "title": "beta", "done": true },
+        { "id": "p3", "title": "Gamma", "done": false }
+      ],
+      "plan": {
+        "filters": [{ "kind": "eq", "column": "done", "value": false }],
+        "cardinality": "maybeSingle"
+      },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_CONSTRAINT"
+    },
+    {
+      "name": "empty plan returns every row in input order",
+      "rows": [
+        { "id": "p1", "title": "Alpha" },
+        { "id": "p2", "title": "beta" },
+        { "id": "p3", "title": "Gamma" }
+      ],
+      "plan": {},
+      "expected": ["p1", "p2", "p3"]
+    },
+    {
+      "name": "empty row set",
+      "rows": [],
+      "plan": { "filters": [{ "kind": "eq", "column": "id", "value": "p1" }] },
+      "expected": []
+    },
+    {
+      "name": "unicode: eq on a CJK value",
+      "rows": [
+        { "id": "u1", "title": "日本語" },
+        { "id": "u2", "title": "にほんご" }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "title", "value": "日本語" }] },
+      "expected": ["u1"]
+    },
+    {
+      "name": "unicode: like underscore consumes one BMP character",
+      "rows": [
+        { "id": "u1", "title": "日本語" },
+        { "id": "u2", "title": "にほんご" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "日_語" }] },
+      "expected": ["u1"]
+    },
+    {
+      "name": "unicode: textSearch phrase on accented text",
+      "rows": [
+        { "id": "t7", "title": "Ünïcödé Tëxt" },
+        { "id": "t8", "title": "plain text" }
+      ],
+      "plan": {
+        "filters": [
+          {
+            "kind": "textSearch",
+            "column": "title",
+            "query": "ünïcödé tëxt",
+            "type": "phrase"
+          }
+        ]
+      },
+      "expected": ["t7"]
+    },
+    {
+      "name": "filters, order, limit and projection combined",
+      "rows": [
+        { "id": "p1", "title": "Alpha", "rank": 2, "done": false, "note": null },
+        { "id": "p2", "title": "beta", "rank": 10, "done": true, "note": "hi" },
+        { "id": "p3", "title": "Gamma", "rank": 1, "done": false },
+        { "id": "p4", "title": "delta", "rank": null, "done": true, "note": "ok" },
+        { "id": "p5", "title": "Alpha two", "rank": 7, "done": false, "note": null }
+      ],
+      "plan": {
+        "filters": [
+          { "kind": "ilike", "column": "title", "pattern": "%a%" },
+          { "kind": "gte", "column": "rank", "value": 2 }
+        ],
+        "orders": [{ "column": "rank", "ascending": false }],
+        "limit": 2,
+        "projection": ["id", "rank"]
+      },
+      "expected": ["p2", "p5"]
+    },
+    {
+      "name": "order: mixed numbers and numeric strings compare as text",
+      "rows": [
+        { "id": "m1", "rank": 2 },
+        { "id": "m2", "rank": "10" },
+        { "id": "m3", "rank": "3" }
+      ],
+      "plan": { "orders": [{ "column": "rank", "ascending": true }] },
+      "expected": ["m2", "m1", "m3"]
+    },
+    {
+      "name": "eq: integer matches float with zero fraction",
+      "rows": [
+        { "id": "n1", "rank": 3.0 },
+        { "id": "n2", "rank": 4 }
+      ],
+      "plan": { "filters": [{ "kind": "eq", "column": "rank", "value": 3 }] },
+      "expected": ["n1"]
+    },
+    {
+      "name": "like: float with zero fraction renders without the fraction",
+      "rows": [
+        { "id": "n1", "rank": 3.0 },
+        { "id": "n2", "rank": 3.5 }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "rank", "pattern": "3" }] },
+      "expected": ["n1"]
+    },
+    {
+      "name": "like: underscore consumes one astral character",
+      "rows": [
+        { "id": "a1", "title": "\ud83d\ude00" },
+        { "id": "a2", "title": "ab" }
+      ],
+      "plan": { "filters": [{ "kind": "like", "column": "title", "pattern": "_" }] },
+      "expected": ["a1"]
+    },
+    {
+      "name": "limit: negative is refused",
+      "rows": [{ "id": "p1", "title": "Alpha" }],
+      "plan": { "limit": -1 },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    },
+    {
+      "name": "textSearch: unknown type is refused",
+      "rows": [{ "id": "t1", "title": "Hello World" }],
+      "plan": {
+        "filters": [
+          { "kind": "textSearch", "column": "title", "query": "hello", "type": "phrsae" }
+        ]
+      },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    },
+    {
+      "name": "select: relational embed is refused",
+      "rows": [{ "id": "p1", "title": "Alpha" }],
+      "plan": { "projection": ["author(name)"] },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    },
+    {
+      "name": "select: rename is refused",
+      "rows": [{ "id": "p1", "title": "Alpha" }],
+      "plan": { "projection": ["title:name"] },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    },
+    {
+      "name": "is: string operand is refused",
+      "rows": [{ "id": "p1", "title": "Alpha" }],
+      "plan": { "filters": [{ "kind": "is", "column": "title", "value": "Alpha" }] },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    },
+    {
+      "name": "select: empty projection segment is dropped",
+      "rows": [{ "id": "p1", "title": "Alpha", "rank": 2 }],
+      "plan": { "projection": ["title", ""] },
+      "expected": ["<missing id>"]
+    },
+    {
+      "name": "order: nullsFirst true on ascending",
+      "rows": [
+        { "id": "nf1", "score": 5 },
+        { "id": "nf2" },
+        { "id": "nf3", "score": null },
+        { "id": "nf4", "score": 1 }
+      ],
+      "plan": { "orders": [{ "column": "score", "ascending": true, "nullsFirst": true }] },
+      "expected": ["nf2", "nf3", "nf4", "nf1"]
+    },
+    {
+      "name": "order: nullsFirst false on descending",
+      "rows": [
+        { "id": "nf1", "score": 5 },
+        { "id": "nf2" },
+        { "id": "nf3", "score": null },
+        { "id": "nf4", "score": 1 }
+      ],
+      "plan": { "orders": [{ "column": "score", "ascending": false, "nullsFirst": false }] },
+      "expected": ["nf2", "nf3", "nf1", "nf4"]
+    },
+    {
+      "name": "regexMatch: unanchored, case-sensitive search",
+      "rows": [
+        { "id": "rx1", "title": "works on a plane" },
+        { "id": "rx2", "title": "Plane works" },
+        { "id": "rx3", "title": null },
+        { "id": "rx4" }
+      ],
+      "plan": { "filters": [{ "kind": "regexMatch", "column": "title", "pattern": "plane" }] },
+      "expected": ["rx1"]
+    },
+    {
+      "name": "regexMatch: an anchored pattern",
+      "rows": [
+        { "id": "rx1", "title": "works on a plane" },
+        { "id": "rx2", "title": "Plane works" },
+        { "id": "rx3", "title": "42" }
+      ],
+      "plan": { "filters": [{ "kind": "regexMatch", "column": "title", "pattern": "^[0-9]+$" }] },
+      "expected": ["rx3"]
+    },
+    {
+      "name": "regexIMatch: case-insensitive search",
+      "rows": [
+        { "id": "rx1", "title": "works on a plane" },
+        { "id": "rx2", "title": "Plane works" },
+        { "id": "rx3", "title": null }
+      ],
+      "plan": { "filters": [{ "kind": "regexIMatch", "column": "title", "pattern": "^PLANE" }] },
+      "expected": ["rx2"]
+    },
+    {
+      "name": "regexMatch: a backreference is refused",
+      "rows": [{ "id": "rx1", "title": "aa" }],
+      "plan": { "filters": [{ "kind": "regexMatch", "column": "title", "pattern": "(a)\\1" }] },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    },
+    {
+      "name": "isDistinct: a null or absent cell differs from a value",
+      "rows": [
+        { "id": "dx1", "note": "x" },
+        { "id": "dx2", "note": null },
+        { "id": "dx3" },
+        { "id": "dx4", "note": "y" }
+      ],
+      "plan": { "filters": [{ "kind": "isDistinct", "column": "note", "value": "x" }] },
+      "expected": ["dx2", "dx3", "dx4"]
+    },
+    {
+      "name": "isDistinct: from null keeps only the present cells",
+      "rows": [
+        { "id": "dx1", "note": "x" },
+        { "id": "dx2", "note": null },
+        { "id": "dx3" }
+      ],
+      "plan": { "filters": [{ "kind": "isDistinct", "column": "note", "value": null }] },
+      "expected": ["dx1"]
+    },
+    {
+      "name": "overlaps: a JSON-text array shares an element",
+      "rows": [
+        { "id": "ov1", "tags": "[\"a\",\"b\"]" },
+        { "id": "ov2", "tags": "[\"c\"]" },
+        { "id": "ov3", "tags": null },
+        { "id": "ov4", "tags": "a" }
+      ],
+      "plan": { "filters": [{ "kind": "overlaps", "column": "tags", "value": ["b", "z"] }] },
+      "expected": ["ov1"]
+    },
+    {
+      "name": "overlaps: an operand written as JSON text",
+      "rows": [
+        { "id": "ov1", "tags": "[\"a\",\"b\"]" },
+        { "id": "ov2", "tags": "[\"c\"]" }
+      ],
+      "plan": { "filters": [{ "kind": "overlaps", "column": "tags", "value": "[\"c\",\"d\"]" }] },
+      "expected": ["ov2"]
+    },
+    {
+      "name": "overlaps: a range literal is refused",
+      "rows": [{ "id": "ov1", "tags": "[1,2]" }],
+      "plan": { "filters": [{ "kind": "overlaps", "column": "tags", "value": "[1,5)" }] },
+      "expected": [],
+      "expectError": true,
+      "expectCode": "LOCAL_UNSUPPORTED"
+    }
+  ]
+}

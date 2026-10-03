@@ -1,0 +1,2 @@
+-keep class uniffi.kizunasync_ffi.** { *; }
+-keep class com.kizunasync.kizunasync.** { *; }

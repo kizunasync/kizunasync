@@ -1,0 +1,122 @@
+{
+  "D-atomic-batch-abort": {
+    "file": "decisions/D-atomic-batch-abort.md",
+    "status": "decided",
+    "title": "An atomic batch aborts with one outcome"
+  },
+  "D-attachments-outside-row-sync": {
+    "file": "decisions/D-attachments-outside-row-sync.md",
+    "status": "decided",
+    "title": "Attachment bytes stay outside row-sync"
+  },
+  "D-base-hint": {
+    "file": "decisions/D-base-hint.md",
+    "status": "open",
+    "title": "base_hint shape and semantics"
+  },
+  "D-bucket-move-out": {
+    "file": "decisions/D-bucket-move-out.md",
+    "status": "decided",
+    "title": "A row that leaves a bucket leaves that bucket a tombstone"
+  },
+  "D-client-identity": {
+    "file": "decisions/D-client-identity.md",
+    "status": "decided",
+    "title": "Client identity is an optional client_id with a JWT fallback"
+  },
+  "D-conflict-journal-visibility": {
+    "file": "decisions/D-conflict-journal-visibility.md",
+    "status": "decided",
+    "title": "Conflict-journal visibility is an optional conflicts array"
+  },
+  "D-corpus-soft-delete-and-refusal": {
+    "file": "decisions/D-corpus-soft-delete-and-refusal.md",
+    "status": "decided",
+    "title": "Corpus grammar: soft-delete column and expected local refusal"
+  },
+  "D-cursor-opaque-token": {
+    "file": "decisions/D-cursor-opaque-token.md",
+    "status": "decided",
+    "title": "The cursor is an opaque text token"
+  },
+  "D-dedup-storage-model": {
+    "file": "decisions/D-dedup-storage-model.md",
+    "status": "open",
+    "title": "Dedup watermark versus per-mutation verdict storage"
+  },
+  "D-engine-event-vocabulary": {
+    "file": "decisions/D-engine-event-vocabulary.md",
+    "status": "decided",
+    "title": "The engine event vocabulary lists only events an engine raises"
+  },
+  "D-field-transforms": {
+    "file": "decisions/D-field-transforms.md",
+    "status": "decided",
+    "title": "Field transforms are an optional transforms slot on update"
+  },
+  "D-outbox-rebase": {
+    "file": "decisions/D-outbox-rebase.md",
+    "status": "decided",
+    "title": "The client rebases its outbox instead of holding back the checkpoint"
+  },
+  "D-page-cap-and-checkpoint-boundary": {
+    "file": "decisions/D-page-cap-and-checkpoint-boundary.md",
+    "status": "decided",
+    "title": "Pull page cap, limit accounting, and the checkpoint boundary"
+  },
+  "D-pull-bucket-required": {
+    "file": "decisions/D-pull-bucket-required.md",
+    "status": "decided",
+    "title": "A bucketed table refuses an unscoped pull with KZL01"
+  },
+  "D-rejection-reasons": {
+    "file": "decisions/D-rejection-reasons.md",
+    "status": "decided",
+    "title": "Rejection reasons are a closed six-literal union"
+  },
+  "D-row-key": {
+    "file": "decisions/D-row-key.md",
+    "status": "decided",
+    "title": "A row is keyed by its table's primary key, sent as canonical text"
+  },
+  "D-schema-version-handshake": {
+    "file": "decisions/D-schema-version-handshake.md",
+    "status": "decided",
+    "title": "Push carries schema_version and gates before any mutation"
+  },
+  "D-signal-excludes-page-data": {
+    "file": "decisions/D-signal-excludes-page-data.md",
+    "status": "decided",
+    "title": "A signal response carries no page data"
+  },
+  "D-tombstone-delivery": {
+    "file": "decisions/D-tombstone-delivery.md",
+    "status": "decided",
+    "title": "A tombstone reaches only a caller who received a live row of its bucket"
+  },
+  "D-transport-error-codes": {
+    "file": "decisions/D-transport-error-codes.md",
+    "status": "open",
+    "title": "Portable transient and permanent transport error codes"
+  },
+  "D-verdict-correlation": {
+    "file": "decisions/D-verdict-correlation.md",
+    "status": "decided",
+    "title": "Verdicts correlate by request order and by mutation_id"
+  },
+  "D-verdict-ownership": {
+    "file": "decisions/D-verdict-ownership.md",
+    "status": "decided",
+    "title": "A replayed mutation id answers only the user who pushed it"
+  },
+  "D-visibility-horizon": {
+    "file": "decisions/D-visibility-horizon.md",
+    "status": "decided",
+    "title": "Fencing is the Postgres visibility horizon"
+  },
+  "D-wakeup-channel": {
+    "file": "decisions/D-wakeup-channel.md",
+    "status": "open",
+    "title": "Wake-up channel and payload"
+  }
+}

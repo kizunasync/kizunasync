@@ -1,0 +1,124 @@
+---
+title: Insert data
+description: Insert one row with the write builder or the low-level apply call.
+status: alpha
+docType: reference
+library: swift
+pageKind: method
+audience: app-developer
+---
+
+# Swift: Insert data
+
+`from(_:).insert(_:)` writes the row into the local database and queues one [outbox](../../resources/glossary.md#outbox) mutation for the next sync run, minting a uuid primary key when the table is keyed by `id` and `columns` carry none. `apply(table:pk:op:...)` is the same write at the low level, for a call site that already has its own primary key or needs `mutationId`.
+
+## Examples
+
+### Basic
+
+```swift
+// TodoApp/TodoListView.swift (excerpt)
+import KizunaSync
+
+try await kizunasync.from("todos").insert([
+  "title": "works on a plane", "done": false
+])
+```
+
+### With your own primary key
+
+```swift
+// TodoApp/TodoListView.swift (excerpt)
+import Foundation
+import KizunaSync
+
+try await kizunasync.from("todos").insert([
+  "id": UUID().uuidString, "title": "works on a plane", "done": false
+])
+```
+
+### Low-level: apply
+
+```swift
+// TodoApp/TodoListView.swift (excerpt)
+import Foundation
+import KizunaSync
+
+let mutationId = UUID().uuidString
+try await kizunasync.apply(
+  table: "todos",
+  pk: todoId,
+  op: .insert,
+  columns: ["title": "works on a plane", "done": false],
+  mutationId: mutationId
+)
+```
+
+The id you pass as `mutationId` is the one the server's verdict and any journal entry carry, so a screen can match a [rejection](./rejections.md) back to the write that caused it. `from(_:).insert(_:)` has no `mutationId` parameter; use `apply` when you need to pass one.
+
+### Read the inserted row back
+
+```swift
+// TodoApp/TodoListView.swift (excerpt)
+import Foundation
+import KizunaSync
+
+let todoId = UUID().uuidString
+try await kizunasync.from("todos").insert(["id": todoId, "title": "works on a plane", "done": false])
+let todo = try await kizunasync.from("todos").select("id, title").eq("id", todoId).single()
+```
+
+`insert(_:)` writes the row at once and answers nothing. Pass the `id`, then read the row back by it, with any column the engine filled. `UUID().uuidString` is uppercase and the engine stores the key in lowercase, and the `eq` filter on the key column is lowercased the same way, so `todoId` finds the row as it is.
+
+## Parameters
+
+### `from(_:).insert(_:)`
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `columns` | `[String: Any]` | No | Column values for the row. On a table keyed by `id` alone, a row without `"id"` gets a minted lowercase [UUID](https://grokipedia.com/page/Universally_unique_identifier). Every other row names each column of the table's [row key](../../sync/sync-rules-and-buckets.md#row-keys) with a non-empty string or an integer, and the engine derives the primary key from them. A uuid-shaped key value is stored and pushed in lowercase, whatever case you pass. Default: empty. |
+
+### `apply(table:pk:op:columns:mutationId:transforms:precondition:)`
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `table` | `String` | Yes | Table name, which must be one of the keys of `tables` in [Initializing](./initializing.md#parameters). |
+| `pk` | `String` | Yes | Primary key of the new row. It must be non-empty: the client refuses an empty value before the engine is reached. On a table keyed by `id` whose `columns` leave `id` out, it is the row's `id`, a [UUID](https://grokipedia.com/page/Universally_unique_identifier) string or the decimal text of an integer. Otherwise it must be the key text the key columns in `columns` spell, described in [Row keys](../../sync/sync-rules-and-buckets.md#row-keys). The engine lowercases a uuid-shaped key value and spells a composite key in canonical form before it compares the two. |
+| `op` | `KizunaSyncOp` | Yes | Set to [`.insert`](https://supabase.com/docs/reference/swift/insert#examples), whose column payload is the one Supabase documents. |
+| `columns` | `[String: Any]` | No | Column values for the row, encoded to JSON. Default: empty. |
+| `mutationId` | `String?` | No | Client-side id of this mutation, echoed in the server verdict and in the journal. Default: `nil`, which makes the engine generate a UUID. |
+| `transforms` | `[String: Any]?` | No | Field transforms, keyed by column. The local insert path writes `columns` only, so a transform changes nothing locally on an insert. See [Using transforms](./using-transforms.md). Default: `nil`. |
+| `precondition` | `[String: Any]?` | No | Column values the server compares against the row it can see before it applies the mutation. A mismatch is rejected with reason `PRECONDITION` instead of applied. Default: `nil`. |
+
+## Returns
+
+`Void`. Both calls are `async throws` and run the engine call on a dedicated dispatch queue, so neither ever blocks the main actor.
+
+## Errors
+
+| Code | Condition |
+|---|---|
+| `UNKNOWN_TABLE` | `table` is not one of the tables the client was created with. |
+| `LOCAL_CONSTRAINT` | A key column is missing, `null`, or neither a string nor an integer, and the message names it; `pk` spells another primary key than the key columns in `columns`; or a live row already holds this key in this table. |
+| `JSON` | The engine cannot parse the encoded mutation. |
+| `ENGINE_UNAVAILABLE` | The client has no engine because [Initializing](./initializing.md) has not run. |
+
+`apply` throws `KizunaSyncError.engine(code: "LOCAL_UNSUPPORTED", message: "apply requires table and pk")` inside the client when `table` or `pk` is empty, before the engine is reached. A value the platform serializer refuses never reaches the engine: `JSONSerialization` raises inside the client first, so it surfaces as a serialization error rather than an engine code.
+
+## Notes
+
+Supabase documents the column payload and its examples on [`insert()`](https://supabase.com/docs/reference/swift/insert#examples); this page adds only what local-first changes. The write lands in local [SQLite](https://grokipedia.com/page/SQLite) first and its verdict arrives with a later [Sync](./sync.md), which is the path [Offline writes](../../sync/offline-writes.md#1-write-locally) walks through. A successful insert raises `LOCAL_CHANGED` and then `QUEUE_DEPTH` on [Subscribe to events](./on.md#returns), so a list can refresh itself without polling. Until a run delivers it, the row is counted by [Outbox depth](./outbox-depth.md). The [Host scheduler](./scheduler.md) wakes on that `QUEUE_DEPTH` event, so the write goes out without waiting for its timer.
+
+On a table whose bucket is `.byOwner(column)`, an insert that leaves that column out is written with the owner's id: the user the first session token named, at create or through [Set access token](./set-access-token.md), which the local database keeps across launches. The outbox entry carries the filled column too. An insert that names the column keeps its value, `null` included, and an update or a delete is never filled. Before any token has named an owner, the insert keeps only the columns you passed.
+
+Row Level Security judges the insert when the push reaches the server, not when this call returns. When a policy refuses the row, the engine reverts it after the fact and journals the rejection. Supabase describes the policy side under [Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security#insert-policies).
+
+## Related reference
+
+- [Fetch data](./fetch-data.md)
+- [Update data](./update-data.md)
+- [Delete data](./delete-data.md)
+- [Using transforms](./using-transforms.md)
+- [Sync](./sync.md)
+- [Kotlin: Insert data](../kotlin/insert-data.md)
+- [JavaScript: Insert data](../javascript/insert-data.md)

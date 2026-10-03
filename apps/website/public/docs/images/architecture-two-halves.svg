@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 810" width="1440" height="810" fill="none" role="img" aria-labelledby="ttl dsc">
+  <title id="ttl">Kizuna architecture: the Rust kernel on the device and the SQL pack in your Supabase project, with no Kizuna service between them.</title>
+  <desc id="dsc">A Kizuna deployment has two halves, and nothing of Kizuna's runs between them. On the device, your app (React, Vue, Expo, Swift, or Kotlin) calls the app client, createKizunaSync or KizunaSyncClient, which reaches the Rust kernel through one of three bridges: a WebAssembly worker, N-API, or UniFFI. The kernel card, kizunasync-engine, lists the outbox with three queued mutations, push and pull, the checkpoint, and the attachment queue, and the kernel owns the local SQLite store through rusqlite. Your Supabase project holds the kizunasync schema with its pull and push functions, _changelog, _tombstones, _verdicts, and the triggers on synced tables, next to your tables under RLS, Storage for attachment bytes, and Realtime on kizunasync:&lt;table&gt; topics. A thin divider between the halves carries the label no Kizuna service. In the loop, a chip carrying three mutations rides the push wire to the kizunasync schema, your tables flash as the rows are written under RLS, and an applied chip rides back while the outbox count drops from 3 to 0. A pull chip then brings a new checkpoint to the kernel, a bytes chip travels its own dashed wire from the kernel to Storage, and Realtime rings and sends a wake pulse to the kernel. The outbox shows three queued mutations again as the loop repeats.</desc>
+  <style>.s{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif}.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}</style>
+  <defs>
+    <filter id="glow" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="10"/></filter>
+    <mask id="gaps">
+      <rect width="1440" height="810" fill="white"/>
+      <rect x="64" y="468" width="472" height="272" rx="14" fill="black"/>
+      <rect x="904" y="352" width="472" height="200" rx="14" fill="black"/>
+      <rect x="904" y="580" width="472" height="64" rx="14" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="1440" height="810" rx="16" fill="#15141f"/>
+
+  <!-- ===== GRID ===== -->
+  <g fill="#1d1c29" opacity="0.45">
+    <rect x="1368" y="-40" width="176" height="64" rx="10"/>
+    <rect x="-162" y="52" width="176" height="64" rx="10"/>
+    <rect x="-60" y="144" width="176" height="64" rx="10"/><rect x="144" y="144" width="176" height="64" rx="10"/><rect x="348" y="144" width="176" height="64" rx="10"/><rect x="960" y="144" width="176" height="64" rx="10"/><rect x="1164" y="144" width="176" height="64" rx="10"/><rect x="1368" y="144" width="176" height="64" rx="10"/>
+    <rect x="-162" y="236" width="176" height="64" rx="10"/><rect x="1266" y="236" width="176" height="64" rx="10"/>
+    <rect x="-60" y="328" width="176" height="64" rx="10"/><rect x="1368" y="328" width="176" height="64" rx="10"/>
+    <rect x="-162" y="420" width="176" height="64" rx="10"/><rect x="1266" y="420" width="176" height="64" rx="10"/>
+    <rect x="-60" y="512" width="176" height="64" rx="10"/><rect x="1368" y="512" width="176" height="64" rx="10"/>
+    <rect x="-162" y="604" width="176" height="64" rx="10"/><rect x="1266" y="604" width="176" height="64" rx="10"/>
+    <rect x="-60" y="696" width="176" height="64" rx="10"/><rect x="1368" y="696" width="176" height="64" rx="10"/>
+    <rect x="-162" y="788" width="176" height="64" rx="10"/><rect x="42" y="788" width="176" height="64" rx="10"/><rect x="246" y="788" width="176" height="64" rx="10"/><rect x="1062" y="788" width="176" height="64" rx="10"/><rect x="1266" y="788" width="176" height="64" rx="10"/>
+  </g>
+
+  <!-- ===== HEADLINE ===== -->
+  <text x="720" y="78" text-anchor="middle" class="s" font-size="46" font-weight="700" fill="#ecebf0">Two halves. <tspan fill="#e5484d">Nothing</tspan> of ours in between.</text>
+  <text x="720" y="122" text-anchor="middle" class="s" font-size="21" fill="#a7a4b2">The kernel answers screens from local SQLite on the device; the SQL pack speaks the protocol in the Supabase project you own.</text>
+
+  <!-- ===== ON THE DEVICE ===== -->
+  <rect x="40" y="160" width="520" height="604" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="358" y="149" width="178" height="22" fill="#15141f"/>
+  <text x="446.8" y="166" text-anchor="middle" class="m" font-size="18" letter-spacing="1.8" fill="#a7a4b2">ON THE DEVICE</text>
+  <rect x="64" y="184" width="472" height="94" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <text x="88" y="220" class="s" font-size="22" font-weight="700" fill="#ecebf0">Your app</text>
+  <rect x="88" y="234" width="77" height="34" rx="8" fill="#26252f"/>
+  <text x="126.5" y="258" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">React</text>
+  <rect x="175" y="234" width="60" height="34" rx="8" fill="#26252f"/>
+  <text x="205.0" y="258" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">Vue</text>
+  <rect x="245" y="234" width="70" height="34" rx="8" fill="#26252f"/>
+  <text x="280.0" y="258" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">Expo</text>
+  <rect x="325" y="234" width="71" height="34" rx="8" fill="#26252f"/>
+  <text x="360.5" y="258" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">Swift</text>
+  <rect x="406" y="234" width="78" height="34" rx="8" fill="#26252f"/>
+  <text x="445.0" y="258" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">Kotlin</text>
+  <rect x="64" y="300" width="472" height="62" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <text x="300" y="338" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">createKizunaSync / KizunaSyncClient</text>
+  <rect x="375" y="289" width="141" height="22" fill="#15141f"/>
+  <text x="445.7" y="306" text-anchor="middle" class="m" font-size="18" letter-spacing="1.8" fill="#a7a4b2">APP CLIENT</text>
+  <rect x="64" y="386" width="472" height="60" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="96" y="400" width="226" height="34" rx="8" fill="#26252f"/>
+  <text x="209.0" y="424" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">WebAssembly worker</text>
+  <rect x="332" y="400" width="79" height="34" rx="8" fill="#26252f"/>
+  <text x="371.5" y="424" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">N-API</text>
+  <rect x="421" y="400" width="83" height="34" rx="8" fill="#26252f"/>
+  <text x="462.5" y="424" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">UniFFI</text>
+  <rect x="426" y="375" width="90" height="22" fill="#15141f"/>
+  <text x="471.0" y="392" text-anchor="middle" class="m" font-size="18" letter-spacing="1.8" fill="#a7a4b2">BRIDGE</text>
+  <g stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6">
+    <path d="M300 280 V298"/><path d="M300 364 V384"/><path d="M300 448 V466"/>
+  </g>
+  <rect x="64" y="468" width="472" height="272" rx="14" fill="none" stroke="#e5484d" stroke-width="3" filter="url(#glow)" opacity="0.35">
+    <animate attributeName="opacity" values="0.35;0.35;0.7;0.35;0.35" keyTimes="0;0.88214;0.89643;0.93571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+  </rect>
+  <rect x="64" y="468" width="472" height="272" rx="14" fill="#1d1c29" stroke="#e5484d" stroke-width="1.5"/>
+  <text x="88" y="510" class="s" font-size="26" font-weight="700" fill="#ecebf0">Rust kernel</text>
+  <text x="88" y="540" class="m" font-size="20" fill="#e5484d">kizunasync-engine</text>
+  <path d="M364 572 V716" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="88" y="573" width="12" height="12" rx="3" fill="#26252f"/>
+  <text x="112" y="586" class="s" font-size="20" fill="#ecebf0">outbox</text>
+  <rect x="88" y="611" width="12" height="12" rx="3" fill="#26252f"/>
+  <text x="112" y="624" class="s" font-size="20" fill="#ecebf0">push / pull</text>
+  <rect x="88" y="649" width="12" height="12" rx="3" fill="#26252f"/>
+  <text x="112" y="662" class="s" font-size="20" fill="#ecebf0">checkpoint</text>
+  <rect x="88" y="687" width="12" height="12" rx="3" fill="#26252f"/>
+  <text x="112" y="700" class="s" font-size="20" fill="#ecebf0">attachment queue</text>
+  <rect x="88" y="611" width="12" height="12" rx="3" fill="#e5484d" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.05;0.06786;0.11429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="88" y="649" width="12" height="12" rx="3" fill="#e5484d" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.58214;0.6;0.64286;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="88" y="687" width="12" height="12" rx="3" fill="#e5484d" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.625;0.64286;0.68571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="189" y="564" width="34" height="30" rx="8" fill="#26252f"/>
+  <text x="206" y="593" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">3<animate attributeName="opacity" values="1;1;0;0;1;1" keyTimes="0;0.40357;0.41786;0.94286;0.96429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+  <text x="206" y="593" text-anchor="middle" class="m" font-size="20" fill="#e5484d" opacity="0">0<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.40714;0.42143;0.93929;0.95357;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+  <path d="M418 588 v46 a22 8 0 0 0 44 0 v-46" stroke="#a7a4b2" stroke-opacity="0.8" stroke-width="2"/>
+  <ellipse cx="440" cy="588" rx="22" ry="8" stroke="#a7a4b2" stroke-opacity="0.8" stroke-width="2"/>
+  <text x="440" y="676" text-anchor="middle" class="s" font-size="20" fill="#ecebf0">local SQLite</text>
+  <text x="440" y="704" text-anchor="middle" class="m" font-size="20" fill="#a7a4b2">rusqlite</text>
+
+  <!-- ===== YOUR SUPABASE PROJECT ===== -->
+  <rect x="880" y="160" width="520" height="604" rx="14" fill="#15141f" stroke="#26252f" stroke-width="1.5"/>
+  <rect x="1096" y="149" width="280" height="22" fill="#15141f"/>
+  <text x="1236.2" y="166" text-anchor="middle" class="m" font-size="18" letter-spacing="1.8" fill="#a7a4b2">YOUR SUPABASE PROJECT</text>
+  <path d="M928 190 v46 a22 8 0 0 0 44 0 v-46" fill="none" stroke="#3ECF8E" stroke-width="2"/>
+  <ellipse cx="950" cy="190" rx="22" ry="8" fill="none" stroke="#3ECF8E" stroke-width="2"/>
+  <g transform="translate(992 196) scale(1.41667)" fill="#3ECF8E"><path d="M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C-.33 13.427.65 15.455 2.409 15.455h9.579l.113 7.51c.014.985 1.259 1.408 1.873.636l9.262-11.653c1.093-1.375.113-3.403-1.645-3.403h-9.642z"/></g>
+  <text x="1034" y="220" class="s" font-size="24" font-weight="700" fill="#ecebf0">Supabase</text>
+  <rect x="904" y="272" width="472" height="60" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <text x="928" y="310" class="s" font-size="22" font-weight="700" fill="#ecebf0">your tables · RLS</text>
+  <rect x="904" y="272" width="472" height="60" rx="14" stroke="#e5484d" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.22143;0.23929;0.29286;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="904" y="352" width="472" height="200" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <text x="928" y="390" class="m" font-size="22" font-weight="700" fill="#ecebf0">kizunasync</text>
+  <text x="1068" y="390" class="s" font-size="20" fill="#a7a4b2">schema</text>
+  <rect x="928" y="408" width="72" height="36" rx="8" fill="#26252f"/>
+  <text x="964.0" y="433" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">pull</text>
+  <rect x="1010" y="408" width="72" height="36" rx="8" fill="#26252f"/>
+  <text x="1046.0" y="433" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">push</text>
+  <rect x="928" y="408" width="72" height="36" rx="8" stroke="#e5484d" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.43214;0.45;0.49286;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="1010" y="408" width="72" height="36" rx="8" stroke="#e5484d" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.19643;0.21429;0.25714;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <text x="928" y="480" class="m" font-size="20" fill="#a7a4b2">_changelog</text>
+  <text x="1070" y="480" class="m" font-size="20" fill="#a7a4b2">_tombstones</text>
+  <text x="1225" y="480" class="m" font-size="20" fill="#a7a4b2">_verdicts</text>
+  <text x="928" y="518" class="s" font-size="20" fill="#a7a4b2">triggers on synced tables</text>
+  <rect x="904" y="580" width="472" height="64" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <text x="928" y="620" class="s" font-size="22" font-weight="700" fill="#ecebf0">Storage</text>
+  <text x="1030" y="620" class="s" font-size="20" fill="#a7a4b2">attachment bytes</text>
+  <rect x="904" y="580" width="472" height="64" rx="14" stroke="#e5484d" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;0.73929;0.75714;0.8;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></rect>
+  <rect x="904" y="668" width="472" height="64" rx="14" fill="#1d1c29" stroke="#26252f" stroke-width="1.5"/>
+  <circle cx="934" cy="700" r="6" fill="#a7a4b2"/>
+  <circle cx="934" cy="700" r="6" stroke="#e5484d" stroke-width="2" opacity="0"><animate attributeName="r" values="6;6;24;6;6" keyTimes="0;0.79286;0.85;0.85714;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;0.9;0;0" keyTimes="0;0.79286;0.80357;0.85;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></circle>
+  <text x="972" y="708" class="s" font-size="22" font-weight="700" fill="#ecebf0">Realtime</text>
+  <text x="1082" y="708" class="m" font-size="20" fill="#a7a4b2">kizunasync:&lt;table&gt;</text>
+
+  <!-- ===== DIVIDER ===== -->
+  <path d="M720 168 V756" stroke="#a7a4b2" stroke-opacity="0.2" stroke-width="1.5"/>
+  <rect x="624" y="296" width="191" height="32" fill="#15141f"/>
+  <text x="720" y="319" text-anchor="middle" class="s" font-size="20" fill="#a7a4b2">no Kizuna service</text>
+
+  <!-- ===== WIRES ===== -->
+  <g stroke="#a7a4b2" stroke-opacity="0.35" stroke-width="1.5" stroke-dasharray="4 6">
+    <path d="M546 492 H884"/>
+    <path d="M894 532 H556"/>
+    <path d="M546 612 H884"/>
+    <path d="M894 700 H556"/>
+  </g>
+  <g fill="#a7a4b2" fill-opacity="0.35">
+    <polygon points="884,487 896,492 884,497"/><polygon points="556,527 544,532 556,537"/>
+    <polygon points="884,607 896,612 884,617"/><polygon points="556,695 544,700 556,705"/>
+  </g>
+  <rect x="644" y="436" width="152" height="28" fill="#15141f"/>
+  <rect x="686" y="668" width="68" height="28" fill="#15141f"/>
+  <text x="720" y="456" text-anchor="middle" class="m" font-size="20" fill="#a7a4b2">pull / push</text>
+  <text x="720" y="688" text-anchor="middle" class="m" font-size="20" fill="#a7a4b2">wake<animate attributeName="fill" values="#a7a4b2;#a7a4b2;#e5484d;#e5484d;#a7a4b2;#a7a4b2" keyTimes="0;0.86429;0.87857;0.92143;0.94286;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/></text>
+
+  <!-- ===== ANIMATION ===== -->
+  <g mask="url(#gaps)">
+    <g opacity="0">
+      <g transform="translate(-123 -20)">
+        <rect width="245" height="40" rx="10" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+        <text x="122" y="27" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">push · 3 mutations</text>
+      </g>
+      <animateMotion path="M410 492 L1030 492" keyPoints="0;0;1;1" keyTimes="0;0.07143;0.21429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.07143;0.08571;0.2;0.21429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-68 -18)">
+        <rect width="136" height="36" rx="8" fill="#1d1c29" stroke="#3ECF8E" stroke-opacity="0.8" stroke-width="1.5"/>
+        <text x="68" y="25" text-anchor="middle" class="m" font-size="20" fill="#3ECF8E">applied ✓</text>
+      </g>
+      <animateMotion path="M976 532 L464 532" keyPoints="0;0;1;1" keyTimes="0;0.28571;0.41429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.28571;0.3;0.4;0.41429;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-117 -20)">
+        <rect width="233" height="40" rx="10" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+        <text x="116" y="27" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">pull · checkpoint</text>
+      </g>
+      <animateMotion path="M1024 532 L416 532" keyPoints="0;0;1;1" keyTimes="0;0.45714;0.6;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.45714;0.47143;0.58571;0.6;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+    <g opacity="0">
+      <g transform="translate(-44 -20)">
+        <rect width="88" height="40" rx="10" fill="#1d1c29" stroke="#a7a4b2" stroke-opacity="0.6" stroke-width="1.5"/>
+        <text x="44" y="27" text-anchor="middle" class="m" font-size="20" fill="#ecebf0">bytes</text>
+      </g>
+      <animateMotion path="M488 612 L952 612" keyPoints="0;0;1;1" keyTimes="0;0.64286;0.75714;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.64286;0.65714;0.74286;0.75714;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </g>
+    <circle r="5" fill="#e5484d" opacity="0">
+      <animateMotion path="M894 700 L528 700" keyPoints="0;0;1;1" keyTimes="0;0.82857;0.88571;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;0;0.9;0.9;0;0" keyTimes="0;0.82857;0.83714;0.88571;0.89286;1" calcMode="spline" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" dur="14s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>

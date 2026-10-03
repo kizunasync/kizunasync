@@ -1,0 +1,20 @@
+[package]
+name = "kizunasync-bindgen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "UniFFI bindgen CLI for generating Swift/Kotlin from kizunasync-ffi"
+publish = false
+
+[[bin]]
+name = "kizunasync-bindgen"
+path = "src/main.rs"
+
+[dependencies]
+uniffi = { version = "0.31.2", features = ["cli"] }
+kizunasync-engine = { path = "../kizunasync-engine" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

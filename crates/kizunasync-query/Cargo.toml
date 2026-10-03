@@ -1,0 +1,17 @@
+[package]
+name = "kizunasync-query"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "In-memory local query filter AST evaluation (parity with packages/core filters)"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,31 @@
+{
+  "name": "@kizunasync/example-todo-vue",
+  "version": "0.2.6-alpha.3",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Kizuna Vue 3 example: normal todo CRUD uses Kizuna over browser SQLite; explicit edge-case probes may call Supabase directly. Visual and behavioral twin of the React example, using kizunasync/vue.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/vue-tsc.cjs -b && vite build",
+    "preview": "vite preview",
+    "test": "bun test",
+    "type-check": "node scripts/vue-tsc.cjs -b",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@kizunasync/ui": "workspace:*",
+    "@kizunasync/utilities": "workspace:*",
+    "@supabase/supabase-js": "^2.117.2",
+    "kizunasync": "workspace:*",
+    "vue": "^3.5.43",
+    "vue-sonner": "^2.0.9"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.1",
+    "vue-tsc": "^3.3.11"
+  }
+}

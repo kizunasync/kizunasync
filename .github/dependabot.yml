@@ -1,0 +1,10 @@
+# Keeps the commit-SHA pins on third-party GitHub Actions current
+# (@../CONVENTIONS.md, @../docs/operations/ci-cd.md).
+
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

@@ -1,0 +1,108 @@
+{
+  "name": "kizunasync",
+  "version": "0.2.6-alpha.3",
+  "description": "The kizunasync command line for Supabase projects: provisions the Kizuna Sync SQL pack and runs the native kizunasync binary.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kizunasync/kizunasync.git",
+    "directory": "packages/kizunasync"
+  },
+  "homepage": "https://kizunasync.com/docs/install",
+  "keywords": ["supabase", "offline-first", "local-first", "sync", "sqlite"],
+  "type": "module",
+  "bin": {
+    "kizunasync": "./dist/main.js"
+  },
+  "exports": {
+    ".": "./src/entries/core.ts",
+    "./config": "./src/entries/config.ts",
+    "./constants": "./src/entries/constants.ts",
+    "./testing": "./src/entries/testing.ts",
+    "./supabase": "./src/entries/supabase.ts",
+    "./web": "./src/entries/web.ts",
+    "./react": "./src/entries/react.ts",
+    "./vue": "./src/entries/vue.ts",
+    "./expo": "./src/entries/expo.ts",
+    "./expo/op-sqlite": "./src/entries/expo-op-sqlite.ts",
+    "./expo/file-store": "./src/entries/expo-file-store.ts",
+    "./expo/transfer": "./src/entries/expo-transfer.ts",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "pack",
+    "README.md"
+  ],
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core/index.js"
+      },
+      "./config": {
+        "types": "./dist/core/config/index.d.ts",
+        "default": "./dist/core/config/index.js"
+      },
+      "./constants": {
+        "types": "./dist/core/constants.d.ts",
+        "default": "./dist/core/constants.js"
+      },
+      "./testing": {
+        "types": "./dist/core/testing/index.d.ts",
+        "default": "./dist/core/testing/index.js"
+      },
+      "./supabase": {
+        "types": "./dist/supabase/index.d.ts",
+        "default": "./dist/supabase/index.js"
+      },
+      "./web": "./dist/web/index.ts",
+      "./web/wasm/kizunasync_wasm_bg.wasm": "./dist/web/wasm/kizunasync_wasm_bg.wasm",
+      "./react": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      },
+      "./vue": {
+        "types": "./dist/vue/index.d.ts",
+        "default": "./dist/vue/index.js"
+      },
+      "./expo": "./dist/expo/index.ts",
+      "./expo/op-sqlite": "./dist/expo/op-sqlite-driver.ts",
+      "./expo/file-store": "./dist/expo/file-store.ts",
+      "./expo/transfer": "./dist/expo/transfer.ts",
+      "./package.json": "./package.json"
+    },
+    "optionalDependencies": {
+      "@kizunasync/darwin-arm64": "*",
+      "@kizunasync/darwin-x64": "*",
+      "@kizunasync/linux-x64-gnu": "*",
+      "@kizunasync/linux-arm64-gnu": "*",
+      "@kizunasync/win32-x64-msvc": "*"
+    }
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "test": "bun test",
+    "type-check": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist pack"
+  },
+  "dependencies": {
+    "@kizunasync/core": "workspace:*",
+    "@kizunasync/expo": "workspace:*",
+    "@kizunasync/react": "workspace:*",
+    "@kizunasync/rn-uniffi": "workspace:*",
+    "@kizunasync/supabase": "workspace:*",
+    "@kizunasync/vue": "workspace:*",
+    "@kizunasync/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "^24.19.0",
+    "esbuild": "^0.28.2",
+    "typescript": "~7.0.2"
+  }
+}

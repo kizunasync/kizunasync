@@ -1,0 +1,1057 @@
+# This workflow checks the Kizuna Sync Rust workspace for quality.
+#
+# It is designed to work alongside ci.yml (which covers JS/Turbo), not to replace it.
+# For standards and conventions, refer to @CONVENTIONS.md.
+
+name: rust-ci
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+  workflow_call:
+    inputs:
+      full:
+        description: Run every job, including packaging and macOS/Windows lanes, ignoring path filters.
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run every job, including packaging and macOS/Windows lanes, ignoring path filters.
+        type: boolean
+        default: false
+
+# Any new push to a branch will cancel previous running Rust CI on that branch,
+# except for main, which always completes.
+concurrency:
+  group: rust-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fail loudly in scripts that rely on missing Rust tools.
+  KSYNC_REQUIRE_RUST: "1"
+
+jobs:
+  # Gates the develop-lane JVM/native jobs on a relevant Rust, binding, or workflow
+  # change; packaging and macOS/Windows jobs ignore this filter and gate on `full` instead.
+  changes:
+    name: detect binding-relevant changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bindings: ${{ steps.filter.outputs.bindings }}
+      examples: ${{ steps.filter.outputs.examples }}
+      simulator: ${{ steps.filter.outputs.simulator }}
+      prebuild: ${{ steps.filter.outputs.prebuild }}
+      ffi_ios: ${{ steps.filter.outputs.ffi_ios }}
+      ffi_android: ${{ steps.filter.outputs.ffi_android }}
+      todo_ios: ${{ steps.filter.outputs.todo_ios }}
+      todo_android: ${{ steps.filter.outputs.todo_android }}
+    steps:
+      # Checkout full history so paths-filter works properly.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: filter
+        with:
+          # A develop push compares against the previous develop commit, not main; a pull request
+          # ignores base and reads the pull request's own changed files (@../../docs/operations/ci-cd.md).
+          base: develop
+          filters: |
+            bindings:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'scripts/cargo-bindgen.sh'
+              - '.github/workflows/rust-ci.yml'
+            examples:
+              - 'examples/**'
+              - 'packages/core/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/rust-ci.yml'
+            simulator:
+              - 'examples/todo-expo/**'
+              - 'packages/expo/**'
+              - 'packages/rn-uniffi/**'
+              - 'packages/core/**'
+              - '.github/workflows/rust-ci.yml'
+            prebuild:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'packages/core/scripts/copy-napi-prebuild.ts'
+              - 'packages/core/src/native/**'
+              - '.github/workflows/rust-ci.yml'
+            ffi_ios:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'scripts/build-xcframework.sh'
+              - 'crates/kizunasync-ffi/bindings/swift/**'
+              - '.github/workflows/rust-ci.yml'
+            ffi_android:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - 'scripts/build-android-aar.sh'
+              - 'crates/kizunasync-ffi/bindings/kotlin/**'
+              - '.github/workflows/rust-ci.yml'
+            todo_ios:
+              - 'examples/todo-ios/**'
+              - 'crates/kizunasync-ffi/**'
+              - 'scripts/build-xcframework.sh'
+              - '.github/workflows/rust-ci.yml'
+            todo_android:
+              - 'examples/todo-android/**'
+              - 'crates/kizunasync-ffi/**'
+              - 'scripts/build-android-aar.sh'
+              - '.github/workflows/rust-ci.yml'
+
+  rust:
+    name: fmt · clippy · test · doc · rustdoc · conformance · deny · bindgen
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      BUN_VERSION: 1.4.2 # Matches package.json and used in ci.yml.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Install Rust stable with rustfmt and clippy, which are pinned in rust-toolchain.toml.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      # Install system dependencies for keyring's Secret Service backend on Linux.
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-workspace
+          cache-on-failure: true
+
+      # Speedup: install prebuilt cargo tools instead of building from scratch.
+      - name: Install cargo tools (nextest, cargo-deny)
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        with:
+          tool: cargo-nextest,cargo-deny
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      # Run strict clippy checks, denying warnings and panic paths (see CONVENTIONS.md).
+      - name: cargo clippy
+        run: >
+          cargo clippy --workspace --all-targets --locked --features kizunasync-ffi/http --
+          -D warnings
+          -D clippy::unwrap_used
+          -D clippy::expect_used
+          -D clippy::panic
+
+      # Run checks/tests for kizunasync-ffi with all default features off.
+      - name: kizunasync-ffi (no default features)
+        run: |
+          cargo check -p kizunasync-ffi --no-default-features --locked
+          cargo clippy -p kizunasync-ffi --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p kizunasync-ffi --locked
+
+      # Run workspace tests with nextest (for parallelism and reliability).
+      - name: cargo nextest run --workspace
+        run: cargo nextest run --workspace --features kizunasync-ffi/http --profile ci
+
+      # Ensure documentation tests run and build cleanly.
+      - name: cargo test --doc --workspace
+        run: cargo test --doc --workspace
+
+      - name: cargo doc --workspace --no-deps (-D warnings)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+
+      - name: cargo run -p kizunasync-conformance
+        run: cargo run -p kizunasync-conformance
+
+      # Check supply chain security and licensing.
+      - name: cargo deny check
+        run: cargo deny check
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      # Sync generated Rust modules from protocol definitions.
+      - name: check-gen-rust (generated module parity)
+        run: bun run --filter @kizunasync/protocol check:gen-rust
+
+      # Build main Rust binaries, including non-default workspace members.
+      - name: cargo build -p kizunasync-napi -p kizunasync-ffi -p kizunasync-cli
+        run: cargo build -p kizunasync-napi -p kizunasync-ffi -p kizunasync-cli
+
+      # Generate UniFFI bindings for Kotlin and Swift. Fail if needs regeneration.
+      - name: UniFFI bindgen generate (swift + kotlin)
+        run: |
+          set -euo pipefail
+          LIB="target/debug/libkizunasync_ffi.so"
+          test -f "$LIB"
+          cargo run -p kizunasync-bindgen -- generate \
+            --library "$LIB" \
+            --language kotlin \
+            --out-dir crates/kizunasync-ffi/bindings/kotlin/Generated
+          cargo run -p kizunasync-bindgen -- generate \
+            --library "$LIB" \
+            --language swift \
+            --out-dir crates/kizunasync-ffi/bindings/swift/Generated
+          cp crates/kizunasync-ffi/bindings/swift/Generated/kizunasync_ffiFFI.h \
+            crates/kizunasync-ffi/bindings/swift/Sources/kizunasync_ffiFFI/include/kizunasync_ffiFFI.h
+          echo "bindgen generate completed (library mode on ubuntu)"
+
+      # Check that all bindings match committed sources.
+      - name: bindings shape check
+        run: bash scripts/cargo-bindgen.sh --check
+
+      - name: bindings are committed and fresh
+        run: git diff --exit-code -- crates/kizunasync-ffi/bindings
+
+  # Ensure the workspace still builds with its minimum supported Rust version (MSRV).
+  msrv:
+    name: msrv · cargo check (1.90)
+    needs: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: "1.90"
+
+      # Install required system libraries for keyring as above.
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-msrv
+          cache-on-failure: true
+
+      - name: cargo check --workspace --features kizunasync-ffi/http
+        env:
+          # rust-toolchain.toml pins `stable`, which outranks the default set above; this keeps the check on the declared rust-version.
+          RUSTUP_TOOLCHAIN: "1.90"
+        run: cargo check --workspace --locked --features kizunasync-ffi/http
+
+  # ── wasm32 build lane (browser engine) ──────────────────────────────────────
+  # Builds and tests the wasm32 engine, including clippy and glue verification.
+  wasm-build:
+    name: wasm · build (kizunasync-wasm) · clippy (engine, store, transfer, wasm)
+    needs: rust
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      BUN_VERSION: 1.4.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-wasm
+          cache-on-failure: true
+
+      # Install all necessary wasm build tools (via composite action).
+      - uses: ./.github/actions/wasm-toolchain
+
+      - name: cargo build -p kizunasync-wasm --target wasm32-unknown-unknown
+        run: cargo build -p kizunasync-wasm --target wasm32-unknown-unknown --profile release-size
+
+      - name: cargo clippy (wasm32, engine/store/transfer/wasm)
+        run: >
+          cargo clippy -p kizunasync-engine -p kizunasync-store -p kizunasync-transfer -p kizunasync-wasm
+          --target wasm32-unknown-unknown --locked -- -D warnings
+
+      # Install and build frontend resources needed for smoke tests and glue checks.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      - name: bun run cargo:wasm
+        run: bun run cargo:wasm
+
+      - name: Upload the generated wasm glue
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wasm-glue
+          path: |
+            packages/web/src/wasm/kizunasync_wasm.js
+            packages/web/src/wasm/kizunasync_wasm_bg.wasm
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: bun run wasm:smoke
+        run: bun run wasm:smoke
+
+      - name: Generated glue API is in sync
+        run: bun run check:wasm-glue
+
+      # Check the brotli-compressed wasm size is below budget; warn but don't fail.
+      - name: Brotli size of the browser engine
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y --no-install-recommends brotli
+          size=$(brotli -q 11 -c packages/web/src/wasm/kizunasync_wasm_bg.wasm | wc -c)
+          budget=1572864
+          echo "kizunasync_wasm_bg.wasm: ${size} bytes brotli -q 11 (budget ${budget})"
+          if [ "$size" -gt "$budget" ]; then
+            echo "::warning::the browser engine is ${size} bytes brotli-compressed, over the ${budget} byte budget"
+            exit 1
+          fi
+          echo "::notice::the browser engine is ${size} bytes brotli-compressed, within the ${budget} byte budget"
+
+  # Test the wasm engine in a real browser with the full frontend test suite.
+  browser-conformance:
+    name: wasm · browser conformance (Chromium)
+    needs: wasm-build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      BUN_VERSION: 1.4.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-wasm
+          cache-on-failure: true
+
+      - uses: ./.github/actions/wasm-toolchain
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      - name: bun run cargo:wasm
+        run: bun run cargo:wasm
+
+      # Install Chromium so @playwright/test runs reliably.
+      - name: Install Chromium
+        working-directory: packages/web
+        run: bunx playwright install --with-deps chromium
+
+      - name: bun run --filter @kizunasync/web test:browser
+        run: bun run --filter @kizunasync/web test:browser
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: browser-conformance-report
+          path: |
+            packages/web/playwright-report
+            packages/web/test-results
+          retention-days: 7
+
+  # ── Generated-binding suites ────────────────────────────────────────────────
+  # Run Kotlin and Swift generated-binding tests against actual Rust cdylibs.
+  bindings-kotlin:
+    name: bindings · kotlin (JUnit on Generated)
+    needs: [changes, rust]
+    if: inputs.full == true || needs.changes.outputs.bindings == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-workspace
+          cache-on-failure: true
+
+      - name: Install JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          gradle-version: "8.7"
+
+      - name: cargo build -p kizunasync-ffi --features http
+        run: cargo build -p kizunasync-ffi --features http
+
+      - name: assert native artifacts exist
+        run: |
+          set -euo pipefail
+          test -f target/debug/libkizunasync_ffi.so
+
+      - name: gradle test
+        working-directory: crates/kizunasync-ffi/bindings/kotlin
+        run: env -u ANDROID_HOME -u ANDROID_SDK_ROOT ./gradlew test --no-daemon --console=plain
+
+      - name: Upload Kotlin test report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kotlin-binding-test-report
+          path: crates/kizunasync-ffi/bindings/kotlin/build/reports/tests/test
+          retention-days: 7
+
+  bindings-swift:
+    name: bindings · swift (XCTest on Generated)
+    needs: [changes, rust]
+    if: inputs.full == true
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-workspace
+          cache-on-failure: true
+
+      - name: swift --version
+        run: swift --version
+
+      - name: cargo build -p kizunasync-ffi --features http
+        run: cargo build -p kizunasync-ffi --features http
+
+      - name: assert native artifacts exist
+        run: |
+          set -euo pipefail
+          test -f target/debug/libkizunasync_ffi.dylib
+
+      - name: swift test
+        run: swift test --package-path crates/kizunasync-ffi/bindings/swift
+
+  # ── @kizunasync/core on the Rust engine ────────────────────────────────────
+  # Tests the @kizunasync/core suite using the Rust-native engine.
+  core-on-rust:
+    name: core · @kizunasync/core suite on the Rust engine
+    needs: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BUN_VERSION: 1.4.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-workspace
+          cache-on-failure: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: cargo build -p kizunasync-napi
+        run: cargo build -p kizunasync-napi
+
+      - name: Install dependencies (root, bun workspaces)
+        run: bun install --frozen-lockfile
+
+      - name: assert the native addon exists
+        run: |
+          set -euo pipefail
+          test -f target/debug/libkizunasync_napi.so
+
+      - name: "full @kizunasync/core suite · the Rust engine"
+        working-directory: packages/core
+        run: bun test
+
+  # ── Examples on the Rust engine ─────────────────────────────────────────────
+  # Runs integration and type checks for the UI examples, using the Rust engine.
+  examples-rust:
+    name: examples · test · type-check (default engine = Rust)
+    needs: [changes, rust]
+    if: inputs.full == true || needs.changes.outputs.examples == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      BUN_VERSION: 1.4.2
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-workspace
+          cache-on-failure: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install libdbus (keyring's Linux backend)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdbus-1-dev pkg-config
+
+      - name: cargo build -p kizunasync-napi
+        run: cargo build -p kizunasync-napi
+
+      - name: Install dependencies (root, bun workspaces)
+        run: bun install --frozen-lockfile
+
+      - name: assert native artifacts exist
+        run: |
+          set -euo pipefail
+          test -f target/debug/libkizunasync_napi.so
+
+      - name: "engine probe: createKizunaSync selects the Rust engine (example workspaces)"
+        run: |
+          set -euo pipefail
+          # single quotes are intentional, this heredoc is JavaScript
+          # shellcheck disable=SC2016
+          probe='
+          import { createKizunaSync, defineConfig } from "kizunasync"
+          import { createTempDatabase } from "kizunasync/testing"
+
+          const config = defineConfig({
+            tables: { probe: { sync: "read-write" } },
+          })
+          const remote = {
+            pull: async () => ({ cursor: "0", has_more: false, rows: [], signal: null, tombstones: [] }),
+            push: async () => ({ verdicts: [] }),
+          }
+          const db = createTempDatabase()
+          const kizunasync = createKizunaSync(db.driver, remote, config, { pollIntervalMs: 0 })
+          if (kizunasync.engine !== "rust") {
+            console.error(`engine probe FAILED: expected rust, got ${kizunasync.engine}`)
+            process.exit(1)
+          }
+          console.log("engine probe OK: createKizunaSync selected the Rust engine")
+          kizunasync.dispose?.()
+          db.remove()
+          '
+          for dir in examples/todo-react examples/todo-vue examples/todo-expo; do
+            echo "-- $dir --"
+            (cd "$dir" && bun -e "$probe")
+          done
+
+      - name: "test · type-check (examples, default engine = Rust)"
+        run: >
+          bun run turbo run test type-check --ui stream
+          --filter=@kizunasync/example-todo-react
+          --filter=@kizunasync/example-todo-vue
+          --filter=@kizunasync/example-todo-expo
+
+  # ── Simulator smoke · iOS ───────────────────────────────────────────────────
+  # Builds and launches the TurboModule for iOS, asserts the engine writes as expected.
+  simulator-smoke:
+    name: simulator smoke · iOS (todo-expo)
+    needs: [changes, wasm-build]
+    if: inputs.full == true
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      BUN_VERSION: 1.4.2
+      # The smoke checks only which engine the app selects, so placeholder Supabase values are enough and failing sync calls are expected.
+      EXPO_PUBLIC_TODO_EXPO_SUPABASE_URL: http://127.0.0.1:55321
+      EXPO_PUBLIC_TODO_EXPO_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_smoke_placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies (root, bun workspaces)
+        run: bun install --frozen-lockfile
+
+      - name: Download the generated wasm glue
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: wasm-glue
+          path: packages/web/src/wasm
+
+      - name: Generated wasm glue is present
+        run: test -s packages/web/src/wasm/kizunasync_wasm.js && test -s packages/web/src/wasm/kizunasync_wasm_bg.wasm
+
+      - name: Install Rust iOS targets
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - name: ubrn build ios
+        working-directory: packages/rn-uniffi
+        run: bun run ubrn:ios
+
+      - name: rn-uniffi generated bindings are committed and fresh
+        run: git diff --exit-code -- packages/rn-uniffi/src/generated
+
+      - name: expo prebuild --platform ios
+        working-directory: examples/todo-expo
+        run: bunx expo prebuild --platform ios
+
+      - name: Select an available iPhone simulator
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available -j | bun -e '
+          const data = JSON.parse(await Bun.stdin.text())
+          const device = Object.values(data.devices).flat().find((d) => d.name.startsWith("iPhone") && d.isAvailable)
+          if (!device) {
+            console.error("no available iPhone simulator found")
+            process.exit(1)
+          }
+          console.log(device.udid)
+          ')
+          test -n "$udid"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+
+      - name: xcodebuild (Release, iphonesimulator)
+        working-directory: examples/todo-expo/ios
+        run: |
+          set -euo pipefail
+          workspace=$(find . -maxdepth 1 -name '*.xcworkspace' | head -1)
+          scheme="$(basename "$workspace" .xcworkspace)"
+          xcodebuild \
+            -workspace "$workspace" \
+            -scheme "$scheme" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "id=$SIM_UDID" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Boot simulator, install, launch, confirm it stays alive
+        working-directory: examples/todo-expo/ios
+        run: |
+          set -euo pipefail
+          app=$(find build/Build/Products/Release-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          test -n "$app"
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+          udid="$SIM_UDID"
+          test -n "$udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" "$bundle_id"
+          for _ in 1 2 3 4 5; do
+            xcrun simctl spawn "$udid" launchctl list | grep -q "$bundle_id"
+            sleep 2
+          done
+          container=$(xcrun simctl get_app_container "$udid" "$bundle_id" data)
+          probe=""
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if [[ -f "$container/Documents/kizunasync-engine.txt" ]]; then
+              probe=$(cat "$container/Documents/kizunasync-engine.txt")
+              break
+            fi
+            sleep 2
+          done
+          echo "engine probe file: ${probe:-<missing>}"
+          test "$probe" = "rust"
+          echo "simulator smoke OK: $bundle_id engine=$probe on $udid ($app)"
+
+      - name: Simulator log on failure
+        if: failure() && env.SIM_UDID != ''
+        run: xcrun simctl spawn "$SIM_UDID" log show --last 10m --style compact --predicate 'subsystem BEGINSWITH "com.facebook.react" OR eventMessage CONTAINS "Terminating app"' | tail -200
+
+  # ── NAPI release prebuilds ─────────────────────────────────────────────────-
+  # Build and upload the N-API Rust dynamic library for each main platform.
+  napi-prebuild:
+    name: napi prebuild · ${{ matrix.platform }}-${{ matrix.arch }}
+    needs: [changes, rust]
+    if: inputs.full == true
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            lib: libkizunasync_napi.so
+          - os: ubuntu-22.04-arm
+            platform: linux
+            arch: arm64
+            lib: libkizunasync_napi.so
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            lib: libkizunasync_napi.dylib
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            lib: kizunasync_napi.dll
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-napi-prebuild
+          cache-on-failure: true
+
+      # Linux here does not need libdbus, and rusqlite is bundled.
+      - name: cargo build -p kizunasync-napi --release
+        run: cargo build -p kizunasync-napi --release
+
+      # Copy the dynamic library into the directory expected by the loader.
+      - name: Copy cdylib into packages/core/src/native
+        shell: bash
+        run: |
+          set -euo pipefail
+          dest="packages/core/src/native/${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$dest"
+          src="target/release/${{ matrix.lib }}"
+          test -f "$src"
+          cp "$src" "$dest/${{ matrix.lib }}"
+          test -f "$dest/${{ matrix.lib }}"
+          ls -la "$dest"
+
+      - name: Upload ${{ matrix.platform }}-${{ matrix.arch }} prebuild
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kizunasync-napi-${{ matrix.platform }}-${{ matrix.arch }}
+          path: packages/core/src/native/${{ matrix.platform }}-${{ matrix.arch }}/${{ matrix.lib }}
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── UniFFI XCFramework (per-commit artifact; released in release-swift.yml) ─
+  ffi-xcframework:
+    name: ffi · xcframework
+    needs: [changes, rust]
+    if: inputs.full == true
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-xcframework
+          cache-on-failure: true
+
+      - name: bun run cargo:xcframework
+        run: bash scripts/build-xcframework.sh
+
+      - name: Upload KizunaSyncFfi.xcframework
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kizunasync-ffi-xcframework
+          path: crates/kizunasync-ffi/bindings/swift/KizunaSyncFfi.xcframework
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── UniFFI Android AAR (per-commit artifact; released in release-kotlin.yml) ─
+  ffi-aar:
+    name: ffi · aar
+    needs: [changes, rust]
+    if: inputs.full == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-aar
+          cache-on-failure: true
+
+      - name: Install JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          gradle-version: "8.7"
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          link-to-sdk: true
+
+      - name: Install cargo-ndk
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        with:
+          tool: cargo-ndk
+
+      - name: Android host unit tests (Robolectric)
+        working-directory: crates/kizunasync-ffi/bindings/kotlin
+        run: ./gradlew :android:testDebugUnitTest --no-daemon
+
+      - name: bun run cargo:aar
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-aar.sh
+
+      - name: Upload kizunasync-ffi AARs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kizunasync-ffi-aar
+          path: |
+            crates/kizunasync-ffi/bindings/kotlin/engine/build/outputs/aar/engine-release.aar
+            crates/kizunasync-ffi/bindings/kotlin/android/build/outputs/aar/android-release.aar
+          if-no-files-found: error
+          retention-days: 14
+
+  todo-ios-sim:
+    name: todo-ios · simulator smoke
+    needs: [changes, rust]
+    if: inputs.full == true
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      BUN_VERSION: 1.4.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-xcframework
+          cache-on-failure: true
+
+      - name: bun run cargo:xcframework
+        run: bash scripts/build-xcframework.sh
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: examples/todo-ios
+        run: xcodegen generate
+
+      - name: Host tests
+        run: |
+          cargo build -p kizunasync-ffi --features http
+          swift test --package-path examples/todo-ios
+
+      - name: xcodebuild (Debug, iphonesimulator)
+        working-directory: examples/todo-ios
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project TodoIos.xcodeproj \
+            -scheme TodoIos \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Boot simulator, install, launch
+        working-directory: examples/todo-ios
+        run: |
+          set -euo pipefail
+          app=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+          test -n "$app"
+          udid=$(xcrun simctl list devices available -j | bun -e '
+          const data = JSON.parse(await Bun.stdin.text())
+          const device = Object.values(data.devices).flat().find((d) => d.name.startsWith("iPhone") && d.isAvailable)
+          if (!device) {
+            console.error("no available iPhone simulator found")
+            process.exit(1)
+          }
+          console.log(device.udid)
+          ')
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" com.kizunasync.todo-ios
+          sleep 4
+          xcrun simctl spawn "$udid" launchctl list | grep -q com.kizunasync.todo-ios
+          echo "todo-ios simulator smoke OK"
+
+  todo-android-host:
+    name: todo-android · host tests
+    needs: [changes, rust]
+    if: inputs.full == true || needs.changes.outputs.todo_android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-workspace
+          cache-on-failure: true
+
+      - name: Install JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: cargo build -p kizunasync-ffi --features http
+        run: cargo build -p kizunasync-ffi --features http
+
+      - name: Host tests
+        working-directory: examples/todo-android
+        run: env -u ANDROID_HOME -u ANDROID_SDK_ROOT ./gradlew :app-core:test --no-daemon
+
+  todo-android-apk:
+    name: todo-android · assembleDebug
+    needs: [changes, rust]
+    if: inputs.full == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          shared-key: kizunasync-aar
+          cache-on-failure: true
+
+      - name: Install JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          link-to-sdk: true
+
+      - name: Install cargo-ndk
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        with:
+          tool: cargo-ndk
+
+      - name: bun run cargo:aar
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-aar.sh
+
+      - name: assembleDebug
+        working-directory: examples/todo-android
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: todo-android-debug
+          path: examples/todo-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

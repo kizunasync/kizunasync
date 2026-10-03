@@ -1,0 +1,13 @@
+{
+  "$comment": "Producer names of EngineEvent in crates/kizunasync-engine/src/config.rs. The transcript schema enum is this set minus LOCAL_CHANGED, which is client-local.",
+  "producer": [
+    "LOCAL_CHANGED",
+    "MUTATION_REJECTED",
+    "QUEUE_DEPTH",
+    "RESET_REQUIRED",
+    "CHECKPOINT_EXPIRED",
+    "BATCH_ABORTED",
+    "DEAD_LETTER",
+    "COLUMN_OVERWRITTEN"
+  ]
+}

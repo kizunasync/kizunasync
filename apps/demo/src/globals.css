@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+@import '@kizunasync/ui/theme.css';
+@import '@heroui/styles';
+
+:root {
+  --overlay: var(--color-site-raised);
+  --overlay-foreground: var(--color-site-text);
+  --border: var(--color-site-border);
+}
+
+@theme {
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@font-face {
+  font-family: 'Symbols Nerd Font';
+  src: url('/fonts/SymbolsNerdFont-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+.nf {
+  font-family: 'Symbols Nerd Font', var(--font-mono);
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-site-background);
+  color: var(--color-site-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+@keyframes site-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-site-ok) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 0.45rem transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes site-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes site-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}

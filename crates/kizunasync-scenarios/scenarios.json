@@ -1,0 +1,1137 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "insert-search-filter",
+      "description": "Insert one row and match with local search filter",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-search-1",
+          "columns": { "title": "Alpha", "user_id": "u1", "rank": 2 }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "search", "query": "alp" }],
+            "cardinality": "many"
+          },
+          "expect_count": 1
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "search", "query": "zzz" }],
+            "cardinality": "many"
+          },
+          "expect_count": 0
+        }
+      ]
+    },
+    {
+      "id": "single-cardinality",
+      "description": "single() returns one object",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-single-1",
+          "columns": { "title": "Only", "user_id": "u1" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Only" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "Only"
+        }
+      ]
+    },
+    {
+      "id": "single-over-zero-rows-fails",
+      "description": "fail-loud: single() over a filter that matches no row is a constraint refusal, never an empty answer",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-single-zero-1",
+          "columns": { "title": "Only", "user_id": "u1" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Absent" }],
+            "cardinality": "single"
+          },
+          "expect_error": true,
+          "expect_code": "LOCAL_CONSTRAINT"
+        }
+      ]
+    },
+    {
+      "id": "maybe-single-missing-is-null",
+      "description": "maybeSingle() with no match returns null, not an error",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-maybe-1",
+          "columns": { "title": "Present", "user_id": "u1" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Absent" }],
+            "cardinality": "maybeSingle"
+          },
+          "expect_null": true
+        }
+      ]
+    },
+    {
+      "id": "update-via-apply",
+      "description": "update merges columns onto the existing row; stale value no longer matches",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-upd-insert",
+          "columns": { "title": "Before", "user_id": "u1", "done": false }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "update",
+          "mutation_id": "m-upd-update",
+          "columns": { "title": "After" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "After" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "After"
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Before" }],
+            "cardinality": "many"
+          },
+          "expect_count": 0
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "done", "value": false }],
+            "cardinality": "many"
+          },
+          "expect_count": 1
+        }
+      ]
+    },
+    {
+      "id": "delete-via-apply-tombstone-absence",
+      "description": "delete removes the row from local reads; tombstone is visible as absence",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-del-insert-1",
+          "columns": { "title": "Keep", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-del-insert-2",
+          "columns": { "title": "Drop", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "delete",
+          "mutation_id": "m-del-delete-2"
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": { "cardinality": "many" },
+          "expect_count": 1
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "p2" }],
+            "cardinality": "many"
+          },
+          "expect_count": 0
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "p1" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "Keep"
+        }
+      ]
+    },
+    {
+      "id": "filters-eq-neq-in-like",
+      "description": "eq / neq / in / like narrow the local result set",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-filter-1",
+          "columns": { "title": "Apple", "status": "open", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-filter-2",
+          "columns": { "title": "Apricot", "status": "done", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p3",
+          "mutation_op": "insert",
+          "mutation_id": "m-filter-3",
+          "columns": { "title": "Banana", "status": "open", "user_id": "u1" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "status", "value": "open" }],
+            "cardinality": "many"
+          },
+          "expect_count": 2
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "neq", "column": "status", "value": "open" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "Apricot"
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "in", "column": "id", "values": ["p1", "p3"] }],
+            "orders": [{ "column": "title", "ascending": true }],
+            "cardinality": "many"
+          },
+          "expect_column_values": { "column": "title", "values": ["Apple", "Banana"] }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "like", "column": "title", "pattern": "Ap%" }],
+            "orders": [{ "column": "title", "ascending": true }],
+            "cardinality": "many"
+          },
+          "expect_column_values": { "column": "title", "values": ["Apple", "Apricot"] }
+        }
+      ]
+    },
+    {
+      "id": "order-and-limit",
+      "description": "orders + limit are applied after filtering, ascending and descending",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-order-1",
+          "columns": { "title": "Charlie", "rank": 3, "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-order-2",
+          "columns": { "title": "Alpha", "rank": 1, "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p3",
+          "mutation_op": "insert",
+          "mutation_id": "m-order-3",
+          "columns": { "title": "Bravo", "rank": 2, "user_id": "u1" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "orders": [{ "column": "rank", "ascending": true }],
+            "cardinality": "many"
+          },
+          "expect_column_values": {
+            "column": "title",
+            "values": ["Alpha", "Bravo", "Charlie"]
+          }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "orders": [{ "column": "rank", "ascending": false }],
+            "limit": 2,
+            "cardinality": "many"
+          },
+          "expect_column_values": { "column": "title", "values": ["Charlie", "Bravo"] }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "orders": [{ "column": "rank", "ascending": true }],
+            "limit": 1,
+            "cardinality": "many"
+          },
+          "expect_count": 1
+        }
+      ]
+    },
+    {
+      "id": "outbox-depth-after-applies",
+      "description": "every accepted local mutation enqueues exactly one outbox entry",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        { "op": "outbox_depth", "expect_depth": 0 },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-depth-1",
+          "columns": { "title": "One", "user_id": "u1" }
+        },
+        { "op": "outbox_depth", "expect_depth": 1 },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-depth-2",
+          "columns": { "title": "Two", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "update",
+          "mutation_id": "m-depth-3",
+          "columns": { "title": "One-Updated" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "delete",
+          "mutation_id": "m-depth-4"
+        },
+        { "op": "outbox_depth", "expect_depth": 4 }
+      ]
+    },
+    {
+      "id": "sync-drains-outbox",
+      "description": "sync against the default ScriptedRemote auto-applies verdicts and clears the outbox",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-sync-1",
+          "columns": { "title": "Pending", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-sync-2",
+          "columns": { "title": "AlsoPending", "user_id": "u1" }
+        },
+        { "op": "outbox_depth", "expect_depth": 2 },
+        { "op": "sync" },
+        { "op": "outbox_depth", "expect_depth": 0 },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": { "cardinality": "many" },
+          "expect_count": 2
+        }
+      ]
+    },
+    {
+      "id": "apply-unknown-table-fails",
+      "description": "fail-loud: a mutation against a table absent from the config is rejected",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "ghosts",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-unknown-1",
+          "columns": { "title": "Nope" },
+          "expect_error": true,
+          "expect_code": "UNKNOWN_TABLE"
+        },
+        { "op": "outbox_depth", "expect_depth": 0 }
+      ]
+    },
+    {
+      "id": "insert-duplicate-pk-fails",
+      "description": "fail-loud: re-inserting an existing primary key is a constraint error",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-dup-1",
+          "columns": { "title": "First", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-dup-2",
+          "columns": { "title": "Second", "user_id": "u1" },
+          "expect_error": true,
+          "expect_code": "LOCAL_CONSTRAINT"
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "p1" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "First"
+        },
+        { "op": "outbox_depth", "expect_depth": 1 }
+      ]
+    },
+    {
+      "id": "update-absent-row-queues-the-write",
+      "description": "an update whose row is absent locally (never created, or deleted by a peer) still queues: the masked columns become the local row and the server decides. Parity with Op::Update in crates/kizunasync-store/src/store/rows.rs, refusing it locally would strand the queued write (conflict-vectors.json update_over_tombstone)",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "missing",
+          "mutation_op": "update",
+          "mutation_id": "m-missing-1",
+          "columns": { "title": "Ghost" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "missing" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "Ghost"
+        },
+        { "op": "outbox_depth", "expect_depth": 1 }
+      ]
+    },
+    {
+      "id": "increment-via-update-transform",
+      "description": "an update transform increment is an D-field-transforms field delta on update, not a fourth op; local rank advances by the delta",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-inc-1",
+          "columns": { "title": "Score", "user_id": "u1", "rank": 1 }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "update",
+          "mutation_id": "m-inc-2",
+          "columns": {},
+          "transforms": { "rank": { "op": "increment", "by": 2 } }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Score" }],
+            "cardinality": "many"
+          },
+          "expect_column_values": { "column": "rank", "values": [3] }
+        }
+      ]
+    },
+    {
+      "id": "apply-where-updates-matching-rows",
+      "description": "apply_where targets local matches only and updates each matching pk",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-aw-1",
+          "columns": { "title": "Open", "user_id": "u1", "done": false }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-aw-2",
+          "columns": { "title": "Shut", "user_id": "u1", "done": true }
+        },
+        {
+          "op": "apply_where",
+          "table": "items",
+          "mutation_op": "update",
+          "filters": [{ "kind": "eq", "column": "done", "value": false }],
+          "columns": { "title": "Closed" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Closed" }],
+            "cardinality": "many"
+          },
+          "expect_count": 1
+        }
+      ]
+    },
+    {
+      "id": "apply-where-targets-by-id",
+      "description": "apply_where targets rows by id: a row whose stored column map carries no id is still addressed by the id the query seam derives from its pk",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-awid-1",
+          "columns": { "title": "Alpha", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-awid-2",
+          "columns": { "title": "Bravo", "user_id": "u1" }
+        },
+        {
+          "op": "apply_where",
+          "table": "items",
+          "mutation_op": "update",
+          "filters": [{ "kind": "in", "column": "id", "values": ["p1", "p9"] }],
+          "columns": { "title": "Targeted" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "title", "value": "Targeted" }],
+            "orders": [{ "column": "id", "ascending": true }],
+            "cardinality": "many"
+          },
+          "expect_column_values": { "column": "id", "values": ["p1"] }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "p2" }],
+            "cardinality": "single"
+          },
+          "expect_single_title": "Bravo"
+        }
+      ]
+    },
+    {
+      "id": "checkpoint-and-empty-rejections",
+      "description": "a fresh engine has an empty rejection journal; seed_checkpoint then checkpoint round-trips the cursor",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        { "op": "rejections", "expect_count": 0 },
+        { "op": "seed_checkpoint", "cursor": "c-seed-1" },
+        { "op": "checkpoint", "expect_cursor": "c-seed-1" }
+      ]
+    },
+    {
+      "id": "soft-delete-hides-the-row",
+      "description": "a filter-targeted delete on a soft-delete table marks the row: it leaves every read until the plan asks for includeDeleted, and it is no write target either",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" },
+              "soft_delete_column": "deleted_at"
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-soft-1",
+          "columns": { "title": "Alpha", "user_id": "u1" }
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p2",
+          "mutation_op": "insert",
+          "mutation_id": "m-soft-2",
+          "columns": { "title": "Bravo", "user_id": "u1" }
+        },
+        {
+          "op": "apply_where",
+          "table": "items",
+          "mutation_op": "delete",
+          "filters": [{ "kind": "eq", "column": "id", "value": "p1" }]
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": { "cardinality": "many" },
+          "expect_count": 1
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": { "cardinality": "many", "includeDeleted": true },
+          "expect_count": 2
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "p1" }],
+            "cardinality": "single",
+            "includeDeleted": true
+          },
+          "expect_single_title": "Alpha"
+        },
+        {
+          "op": "apply_where",
+          "table": "items",
+          "mutation_op": "update",
+          "filters": [{ "kind": "eq", "column": "id", "value": "p1" }],
+          "columns": { "title": "Charlie" }
+        },
+        {
+          "op": "query",
+          "table": "items",
+          "plan": {
+            "filters": [{ "kind": "eq", "column": "id", "value": "p1" }],
+            "cardinality": "single",
+            "includeDeleted": true
+          },
+          "expect_single_title": "Alpha"
+        }
+      ]
+    },
+    {
+      "id": "pull-only-refuses-local-writes",
+      "description": "fail-loud: a table the server owns takes no local write, and the refusal names the local subset rather than waiting for the server",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "announcements": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" },
+              "sync_mode": "pull-only"
+            },
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "apply",
+          "table": "announcements",
+          "pk": "a1",
+          "mutation_op": "insert",
+          "mutation_id": "m-pull-only-1",
+          "columns": { "title": "Alpha", "user_id": "u1" },
+          "expect_error": true,
+          "expect_code": "LOCAL_UNSUPPORTED"
+        },
+        {
+          "op": "query",
+          "table": "announcements",
+          "plan": { "cardinality": "many" },
+          "expect_count": 0
+        },
+        {
+          "op": "apply_where",
+          "table": "announcements",
+          "mutation_op": "update",
+          "filters": [{ "kind": "eq", "column": "id", "value": "a1" }],
+          "columns": { "title": "Bravo" },
+          "expect_error": true,
+          "expect_code": "LOCAL_UNSUPPORTED"
+        },
+        {
+          "op": "apply",
+          "table": "items",
+          "pk": "p1",
+          "mutation_op": "insert",
+          "mutation_id": "m-pull-only-2",
+          "columns": { "title": "Alpha", "user_id": "u1" }
+        },
+        { "op": "outbox_depth", "expect_depth": 1 }
+      ]
+    },
+    {
+      "id": "set-bucket-refuses-an-unconfigured-key",
+      "description": "fail-loud: set_bucket takes only the columns some table declares as its bucket column, so a misspelled key refuses the whole call instead of routing on nothing",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "" }
+            }
+          }
+        },
+        {
+          "op": "set_bucket",
+          "params": { "tenant_id": "t1" },
+          "expect_error": true,
+          "expect_code": "BUCKET_UNSET"
+        },
+        { "op": "set_bucket", "params": { "user_id": "u1" } }
+      ]
+    },
+    {
+      "id": "attachment-budget-stops-a-failing-upload",
+      "description": "an attachment gets the configured transfer attempts and no more: the claim past the budget is refused, the row lands permanently failed, and no later drive returns it",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "attachment_put",
+          "attachment": {
+            "reference": "u1/p1/photo.png",
+            "upload_id": "photo",
+            "table": "items",
+            "pk": "p1",
+            "column": "photo",
+            "bucket": "media",
+            "owner": "u1",
+            "local_path": "/sandbox/photo.png",
+            "direction": "upload",
+            "state": "queued",
+            "created_at": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        { "op": "attachment_pending", "direction": "upload", "expect_count": 1 },
+        {
+          "op": "attachment_fail_next",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_fail_next",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_fail_next",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_fail_next",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_fail_next",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_status",
+          "reference": "u1/p1/photo.png",
+          "expect_status": { "state": "failed", "permanent": false }
+        },
+        {
+          "op": "attachment_fail_next",
+          "reference": "u1/p1/photo.png",
+          "expect_value": false
+        },
+        {
+          "op": "attachment_status",
+          "reference": "u1/p1/photo.png",
+          "expect_status": { "state": "failed", "permanent": true }
+        },
+        { "op": "attachment_pending", "direction": "upload", "expect_count": 0 }
+      ]
+    },
+    {
+      "id": "attachment-retry-forgives-the-budget",
+      "description": "retry is the app taking a stopped attachment back: the budget is forgiven, the attempts start over, and the next drive sees the row again",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "attachment_put",
+          "attachment": {
+            "reference": "u1/p1/photo.png",
+            "upload_id": "photo",
+            "table": "items",
+            "pk": "p1",
+            "column": "photo",
+            "bucket": "media",
+            "owner": "u1",
+            "local_path": "/sandbox/photo.png",
+            "direction": "upload",
+            "state": "failed",
+            "created_at": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "op": "attachment_patch",
+          "reference": "u1/p1/photo.png",
+          "patch": { "attempts": 5, "permanent": true, "state": "failed" }
+        },
+        { "op": "attachment_pending", "direction": "upload", "expect_count": 0 },
+        {
+          "op": "attachment_retry",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_status",
+          "reference": "u1/p1/photo.png",
+          "expect_status": { "state": "queued", "permanent": false }
+        },
+        { "op": "attachment_pending", "direction": "upload", "expect_count": 1 },
+        {
+          "op": "attachment_retry",
+          "reference": "u1/p1/absent.png",
+          "expect_value": false
+        }
+      ]
+    },
+    {
+      "id": "attachment-cancel-keeps-the-row-retryable",
+      "description": "cancel is the app saying not now, never never again: the transfer stops and the row stays a candidate, unlike the budget's own refusal",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "attachment_put",
+          "attachment": {
+            "reference": "u1/p1/photo.png",
+            "upload_id": "photo",
+            "table": "items",
+            "pk": "p1",
+            "column": "photo",
+            "bucket": "media",
+            "owner": "u1",
+            "local_path": "/sandbox/photo.png",
+            "direction": "upload",
+            "state": "queued",
+            "created_at": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "op": "attachment_cancel",
+          "reference": "u1/p1/photo.png",
+          "expect_value": true
+        },
+        {
+          "op": "attachment_status",
+          "reference": "u1/p1/photo.png",
+          "expect_status": { "state": "failed", "permanent": false }
+        },
+        { "op": "attachment_pending", "direction": "upload", "expect_count": 1 },
+        {
+          "op": "attachment_cancel",
+          "reference": "u1/p1/absent.png",
+          "expect_value": false
+        }
+      ]
+    },
+    {
+      "id": "attachment-remove-hands-back-the-sandbox-path",
+      "description": "remove forgets the queue row and answers the sandbox path whose bytes the host still has to delete",
+      "steps": [
+        {
+          "op": "create",
+          "tables": {
+            "items": {
+              "bucket_column": "user_id",
+              "bucket_params": { "user_id": "u1" }
+            }
+          }
+        },
+        {
+          "op": "attachment_put",
+          "attachment": {
+            "reference": "u1/p1/photo.png",
+            "upload_id": "photo",
+            "table": "items",
+            "pk": "p1",
+            "column": "photo",
+            "bucket": "media",
+            "owner": "u1",
+            "local_path": "/sandbox/photo.png",
+            "direction": "upload",
+            "state": "queued",
+            "created_at": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "op": "attachment_remove",
+          "reference": "u1/p1/photo.png",
+          "expect_value": "/sandbox/photo.png"
+        },
+        {
+          "op": "attachment_status",
+          "reference": "u1/p1/photo.png",
+          "expect_null": true
+        },
+        {
+          "op": "attachment_remove",
+          "reference": "u1/p1/photo.png",
+          "expect_null": true
+        }
+      ]
+    }
+  ]
+}

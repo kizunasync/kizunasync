@@ -1,0 +1,975 @@
+/**
+ * Synced tables keyed by any supported primary key, against live Postgres
+ * (D-row-key). A table's key columns are its primary-key columns, recorded in
+ * `_config.key_columns`, and the pk that every bookkeeping table and the wire
+ * carry is their canonical text: the one column's value as `to_jsonb` renders
+ * it, or the JSON array of those texts for a composite key. Row lookups cast
+ * the pk side only, so the key's own index serves them.
+ *
+ * The fixture covers an int8 identity key the server generates (pull-only,
+ * unbucketed), an int8 identity key a device provides (read-write, bucketed), a
+ * text key (unbucketed), a composite (bigint, integer) key (bucketed), a
+ * composite (character varying, smallint) key whose text component carries
+ * JSON escapes, a uuid key, and an int8 key generated always as identity. The
+ * seeded shapes hold rows from before their triggers existed. One more table
+ * carries the capture triggers and no `_config` row, which makes it unsynced.
+ * Writes commit; the tables go at the end with every bookkeeping row and user
+ * they produced. Skips loudly when Postgres is unreachable.
+ */
+
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test'
+import { SQL } from 'bun'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const DB_URL =
+  process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:55322/postgres'
+
+const FEED = '_keys_feed'
+const COUNTER = '_keys_counter'
+const SLUG = '_keys_slug'
+const PAIR = '_keys_pair'
+const LABEL = '_keys_label'
+const CARD = '_keys_card'
+const MINTED = '_keys_minted'
+const TABLES = [FEED, COUNTER, SLUG, PAIR, LABEL, CARD, MINTED] as const
+const UNSYNCED = '_keys_unsynced'
+
+const VECTORS = JSON.parse(readFileSync(join(import.meta.dir, '../../protocol/vectors/row-key-vectors.json'), 'utf8')) as {
+  vectors: { name: string; key_columns: string[]; row: Record<string, unknown>; pk: string }[]
+}
+
+const OLDER_HLC = '2026-01-01T00:00:01.000Z|0|00000000-0000-4000-8000-c10000000001'
+const NEWER_HLC = '2026-01-01T00:00:02.000Z|0|00000000-0000-4000-8000-c10000000001'
+
+/** A blocked backend shows up in pg_stat_activity within a few polls; this bounds the wait at four seconds. */
+const BLOCK_POLLS = 400
+const BLOCK_POLL_MS = 10
+
+let db: SQL | null = null
+let reachable = false
+
+try {
+  const probe = new SQL(DB_URL)
+
+  await probe`select 1`
+  db = probe
+  reachable = true
+} catch (error) {
+  console.warn(
+    `[sync-keys] SKIPPED: no Postgres at ${DB_URL}. Run \`bun run db:start\` or set ` +
+      `SUPABASE_DB_URL. (${error instanceof Error ? error.message : String(error)})`,
+  )
+}
+
+// MARK: - Types
+
+type TTable = (typeof TABLES)[number]
+type TColumns = Record<string, unknown>
+type TBucket = { table: TTable; params: Record<string, string> }
+type TRow = { pk: string; row: TColumns; seq: string; table: string }
+type TTombstone = { deleted_at: string; pk: string; seq: string; table: string }
+type TConflict = { column_name: string; pk: string; table: string; loser_value: unknown }
+type TPullResp = { conflicts?: TConflict[]; cursor: string; has_more: boolean; rows: TRow[]; signal: unknown; tombstones: TTombstone[] }
+type TVerdict = { mutation_id: string; verdict: string; reason?: string; server_row?: TColumns | null }
+type TConn = Awaited<ReturnType<SQL['reserve']>>
+
+interface IMutation {
+  table: TTable
+  op: 'insert' | 'update' | 'delete'
+  pk: unknown
+  columns?: TColumns
+  transforms?: TColumns
+  precondition?: TColumns
+  hlc?: string
+}
+
+/** A push either answered or raised; a raise keeps its SQLSTATE and message. */
+type TOutcome = { raised: false; verdicts: TVerdict[] } | { raised: true; sqlstate: string | null; message: string }
+
+// MARK: - Fixture
+
+const uid = (): string => crypto.randomUUID()
+const claims = (sub: string): string => JSON.stringify({ sub, role: 'authenticated' })
+
+/** The R2 pk text of a composite key: the JSON array of its component texts, comma and space between them. */
+const compositePk = (...components: string[]): string => `[${components.map((component) => JSON.stringify(component)).join(', ')}]`
+
+/** Bun binds a JS array as a JSON scalar; the Postgres text form `{a,b}` casts cleanly to text[]. */
+const textArray = (items: readonly string[]): string => `{${items.map((item) => `"${item}"`).join(',')}}`
+
+const ESCAPED_LABEL = 'say "hi"\\now\nthen'
+const OWNER_A = uid()
+const OWNER_B = uid()
+const minted = { users: new Set<string>(), mutationIds: new Set<string>() }
+const sessions: Array<{ pool: SQL; conn: TConn }> = []
+const seeded: Record<TTable, string> = { [FEED]: '', [COUNTER]: '', [SLUG]: '', [PAIR]: '', [LABEL]: '', [CARD]: '', [MINTED]: '' }
+let seedBase = '0'
+
+const CREATE_TABLES = `
+  create table public.${FEED} (id bigint generated always as identity primary key, title text not null);
+  create table public.${COUNTER} (
+    id bigint generated by default as identity primary key,
+    owner_id uuid not null,
+    title text not null,
+    likes integer not null default 0
+  );
+  create table public.${SLUG} (slug text primary key, title text not null);
+  create table public.${PAIR} (
+    a bigint not null,
+    b integer not null,
+    owner_id uuid not null,
+    title text not null,
+    likes integer not null default 0,
+    primary key (a, b)
+  );
+  create table public.${LABEL} (label character varying(64) not null, n smallint not null, title text not null, primary key (label, n));
+  create table public.${CARD} (id uuid primary key, title text not null);
+  create table public.${MINTED} (id bigint generated always as identity primary key, title text not null);
+  create table public.${UNSYNCED} (code text primary key, title text not null);
+  create trigger kizunasync_track_change after insert or update on public.${UNSYNCED}
+    for each row execute function kizunasync.track_change();
+  create trigger kizunasync_track_delete after delete on public.${UNSYNCED}
+    for each row execute function kizunasync.track_delete();
+`
+
+async function createTables(): Promise<void> {
+  await db!.unsafe(CREATE_TABLES)
+
+  for (const table of TABLES) {
+    const writes = table === FEED ? 'select' : 'select, insert, update, delete'
+
+    await db!.unsafe(`
+      alter table public.${table} enable row level security;
+      grant ${writes} on public.${table} to authenticated;
+      create policy keys_all on public.${table} for all to authenticated using (true) with check (true);
+    `)
+  }
+}
+
+/** Rows written before the capture triggers exist, one set per key shape. */
+async function insertUnsynced(): Promise<void> {
+  await db!.unsafe(`
+    insert into public.${FEED} (title) values ('first'), ('second');
+    insert into public.${COUNTER} (owner_id, title) values ('${OWNER_A}', 'first'), ('${OWNER_A}', 'second');
+    insert into public.${SLUG} (slug, title) values ('alpha', 'first'), ('beta', 'second');
+    insert into public.${PAIR} (a, b, owner_id, title) values (1, 1, '${OWNER_A}', 'first'), (1, 2, '${OWNER_A}', 'second');
+  `)
+  await db!.unsafe(`insert into public.${LABEL} (label, n, title) values ($1, 1, 'first')`, [ESCAPED_LABEL])
+}
+
+/** One transaction, as a provisioning migration runs: config rows with their key columns, triggers, then the seed. */
+async function provision(): Promise<void> {
+  seedBase = await sequenceTop()
+  await db!.begin(async (tx) => {
+    await tx.unsafe(`
+      insert into kizunasync._config (table_name, sync_mode, bucket_column, key_columns, min_schema_version, register_clients)
+      values
+        ('${FEED}', 'pull-only', null, '{id}', 1, false),
+        ('${COUNTER}', 'read-write', 'owner_id', '{id}', 1, false),
+        ('${SLUG}', 'read-write', null, '{slug}', 1, false),
+        ('${PAIR}', 'read-write', 'owner_id', '{a,b}', 1, false),
+        ('${LABEL}', 'read-write', null, '{label,n}', 1, false),
+        ('${CARD}', 'read-write', null, '{id}', 1, false),
+        ('${MINTED}', 'read-write', null, '{id}', 1, false);
+    `)
+
+    for (const table of TABLES) {
+      await tx.unsafe(`
+        create trigger kizunasync_track_change after insert or update on public.${table}
+          for each row execute function kizunasync.track_change();
+        create trigger kizunasync_track_delete after delete on public.${table}
+          for each row execute function kizunasync.track_delete();
+      `)
+      const [queued] = await tx`select kizunasync._seed_changelog(${table})::text as queued`
+
+      seeded[table] = queued.queued as string
+    }
+  })
+}
+
+async function cleanup(): Promise<void> {
+  const tables = textArray(TABLES)
+
+  await db!.unsafe(`drop table if exists ${[...TABLES, UNSYNCED].map((table) => `public.${table}`).join(', ')} cascade`)
+
+  for (const ledger of ['_changelog', '_tombstones', '_bucket_grants', '_row_hlc', '_conflict_journal', '_config']) {
+    await db!.unsafe(`delete from kizunasync.${ledger} where table_name = any($1::text[])`, [tables])
+  }
+  if (minted.mutationIds.size > 0) {
+    await db!.unsafe('delete from kizunasync._verdicts where mutation_id = any($1::uuid[])', [textArray([...minted.mutationIds])])
+  }
+  if (minted.users.size > 0) {
+    await db!.unsafe('delete from auth.users where id = any($1::uuid[])', [textArray([...minted.users])])
+  }
+}
+
+async function closeSessions(): Promise<void> {
+  for (const { pool, conn } of sessions.splice(0)) {
+    await conn`rollback`.catch(() => undefined)
+    conn.release()
+    await pool.end()
+  }
+}
+
+beforeAll(async () => {
+  if (!reachable) {
+    return
+  }
+  await cleanup()
+  await createTables()
+  await insertUnsynced()
+  await provision()
+})
+
+afterEach(async () => {
+  await closeSessions()
+})
+
+afterAll(async () => {
+  if (db !== null) {
+    if (reachable) {
+      await cleanup()
+    }
+    await db.end()
+  }
+})
+
+// MARK: - Helpers
+
+/** Bun's SQL client carries the Postgres SQLSTATE on `errno`. */
+const sqlstateOf = (error: unknown): string | null => {
+  if (!(error instanceof Error) || !('errno' in error)) {
+    return null
+  }
+  return typeof error.errno === 'string' ? error.errno : null
+}
+
+async function sequenceTop(): Promise<string> {
+  const [top] = await db!`
+    select coalesce(max(seq), 0)::text as seq
+    from (select seq from kizunasync._changelog union all select seq from kizunasync._tombstones) s`
+
+  return top.seq as string
+}
+
+async function newUser(): Promise<string> {
+  const [row] = await db!`insert into auth.users (id, is_anonymous) values (gen_random_uuid(), false) returning id::text as id`
+  const id = row.id as string
+
+  minted.users.add(id)
+
+  return id
+}
+
+async function connect(): Promise<TConn> {
+  const pool = new SQL(DB_URL, { max: 1 })
+  const conn = await pool.reserve()
+
+  sessions.push({ pool, conn })
+
+  return conn
+}
+
+async function beginAs(conn: TConn, sub: string): Promise<void> {
+  await conn`begin`
+  await conn`select set_config('request.jwt.claims', ${claims(sub)}, true)`
+  await conn`set local role authenticated`
+}
+
+/** Runs `fn` under the caller's JWT and role in a transaction of its own, which it commits. */
+async function asUser<T>(sub: string, fn: (conn: TConn) => Promise<T>): Promise<T> {
+  const conn = await connect()
+
+  await beginAs(conn, sub)
+  const out = await fn(conn)
+
+  await conn`commit`
+
+  return out
+}
+
+/** Runs `fn` as the table owner in a transaction it always rolls back. */
+async function rolledBack<T>(fn: (conn: TConn) => Promise<T>): Promise<T> {
+  const conn = await connect()
+
+  await conn`begin`
+
+  try {
+    return await fn(conn)
+  } finally {
+    await conn`rollback`
+  }
+}
+
+async function pullAs(sub: string, buckets: TBucket[], cursor = seedBase): Promise<TPullResp> {
+  return asUser(sub, async (conn) => {
+    const [r] = await conn`select kizunasync.pull(${buckets}::jsonb, ${cursor}, 1, 500) as resp`
+
+    return r.resp as TPullResp
+  })
+}
+
+async function pushOutcome(sub: string, mutations: IMutation[]): Promise<TOutcome> {
+  const batch = {
+    atomic: false,
+    mutations: mutations.map((mutation) => {
+      const id = uid()
+
+      minted.mutationIds.add(id)
+
+      return { mutation_id: id, columns: {}, ...mutation }
+    }),
+  }
+  const conn = await connect()
+
+  await beginAs(conn, sub)
+
+  try {
+    const [r] = await conn`select kizunasync.push(${batch}::jsonb, null::uuid, 1) as resp`
+
+    await conn`commit`
+
+    return { raised: false, verdicts: (r.resp as { verdicts: TVerdict[] }).verdicts }
+  } catch (error) {
+    await conn`rollback`.catch(() => undefined)
+
+    return { raised: true, sqlstate: sqlstateOf(error), message: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+async function pushAs(sub: string, mutations: IMutation[]): Promise<TVerdict[]> {
+  const outcome = await pushOutcome(sub, mutations)
+
+  if (outcome.raised) {
+    throw new Error(`sync-keys: the push raised ${outcome.sqlstate}: ${outcome.message}`)
+  }
+  return outcome.verdicts
+}
+
+const answers = (verdicts: TVerdict[]): Array<[string, string | undefined]> => verdicts.map((verdict) => [verdict.verdict, verdict.reason])
+
+async function changelogPks(table: TTable): Promise<string[]> {
+  const rows = await db!`select pk from kizunasync._changelog where table_name = ${table} order by seq`
+
+  return rows.map((row: { pk: string }) => row.pk)
+}
+
+async function tombstonePks(table: TTable): Promise<string[]> {
+  const rows = await db!`select pk from kizunasync._tombstones where table_name = ${table} order by seq`
+
+  return rows.map((row: { pk: string }) => row.pk)
+}
+
+async function readRow(table: TTable, where: string, params: unknown[]): Promise<TColumns | null> {
+  const [row] = await db!.unsafe(`select to_jsonb(t) as row from public.${table} t where ${where}`, params)
+
+  return (row?.row as TColumns | undefined) ?? null
+}
+
+const everyBucket = (owner: string): TBucket[] => [
+  { table: FEED, params: {} },
+  { table: COUNTER, params: { owner_id: owner } },
+  { table: SLUG, params: {} },
+  { table: PAIR, params: { owner_id: owner } },
+  { table: LABEL, params: {} },
+]
+
+const pksOf = (page: TPullResp, table: TTable): string[] => page.rows.filter((row) => row.table === table).map((row) => row.pk)
+
+/**
+ * Renders the inline pk expression `_pk_text_sql` builds for the key columns,
+ * evaluates it over the row next to `_pk_text`, and compares the two as UTF-8
+ * bytes. The key columns travel as a JSON array, so a name with a quote or a
+ * backslash reaches the function unchanged.
+ */
+async function inlinePk(keyColumns: readonly string[], row: Record<string, unknown>): Promise<{ inline: string; same: boolean }> {
+  const columnsSql = 'array(select e.name from jsonb_array_elements_text($1::jsonb) with ordinality as e(name, ord) order by e.ord)'
+  const [built] = await db!.unsafe(`select kizunasync._pk_text_sql(${columnsSql}, 'd.doc') as expr`, [keyColumns])
+  const expr = built.expr as string
+  const [result] = await db!.unsafe(
+    `select ${expr} as inline, convert_to(${expr}, 'UTF8') = convert_to(kizunasync._pk_text(${columnsSql}, d.doc), 'UTF8') as same from (select $2::jsonb as doc) d`,
+    [keyColumns, row],
+  )
+
+  return { inline: result.inline as string, same: result.same as boolean }
+}
+
+// MARK: - Row-key text
+
+describe.skipIf(!reachable)('the row key text', () => {
+  for (const vector of VECTORS.vectors) {
+    test(`_pk_text: ${vector.name}`, async () => {
+      const [row] = await db!`select kizunasync._pk_text(${textArray(vector.key_columns)}::text[], ${vector.row}::jsonb) as pk`
+
+      expect(row.pk).toBe(vector.pk)
+    })
+  }
+
+  for (const vector of VECTORS.vectors) {
+    test(`_pk_text_sql matches _pk_text byte for byte: ${vector.name}`, async () => {
+      expect(await inlinePk(vector.key_columns, vector.row)).toEqual({ inline: vector.pk, same: true })
+    })
+  }
+
+  test('_pk_text_sql quotes each key column name as a literal', async () => {
+    expect(await inlinePk(["it's"], { "it's": 'v' })).toEqual({ inline: 'v', same: true })
+    expect(await inlinePk(["it's", 'back\\slash'], { "it's": 1, 'back\\slash': 'x' })).toEqual({ inline: '["1", "x"]', same: true })
+  })
+
+  test('_pk_text_sql renders one key column as ->> and several as a jsonb array cast to text', async () => {
+    const [row] = await db!`select kizunasync._pk_text_sql('{id}'::text[], 'd.doc') as one, kizunasync._pk_text_sql('{a,b}'::text[], 'd.doc') as two`
+
+    expect(row).toEqual({ one: "(d.doc ->> 'id')", two: "(pg_catalog.jsonb_build_array(d.doc ->> 'a', d.doc ->> 'b')::text)" })
+  })
+
+  test('the set-based changelog statements compute pk text inline, never by calling _pk_text per row', async () => {
+    const rows = await db!`
+      select p.proname, p.prosrc
+        from pg_proc p
+        join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'kizunasync' and p.proname in ('_seed_changelog', '_relabel_changelog')
+       order by p.proname`
+
+    expect(rows.map((row: { proname: string; prosrc: string }) => ({ name: row.proname, perRow: /_pk_text\(/.test(row.prosrc), inline: /_pk_text_sql\(/.test(row.prosrc) }))).toEqual([
+      { name: '_relabel_changelog', perRow: false, inline: true },
+      { name: '_seed_changelog', perRow: false, inline: true },
+    ])
+  })
+
+  test('_row_pk reads the key columns from _config', async () => {
+    const [row] = await db!`select kizunasync._row_pk(${PAIR}, ${{ a: 5, b: 6, title: 'x' }}::jsonb) as pk`
+
+    expect(row.pk).toBe(compositePk('5', '6'))
+  })
+
+  test('_row_pk refuses a table with no _config row with 0A000 naming it', async () => {
+    let failure: { sqlstate: string | null; message: string } | null = null
+
+    try {
+      await db!`select kizunasync._row_pk('_keys_not_configured', '{"id": 1}'::jsonb)`
+    } catch (error) {
+      failure = { sqlstate: sqlstateOf(error), message: error instanceof Error ? error.message : String(error) }
+    }
+    expect(failure?.sqlstate).toBe('0A000')
+    expect(failure?.message).toContain('_keys_not_configured')
+  })
+
+  test('_pk_object decodes a pk into its key columns, the inverse of _pk_text', async () => {
+    const [single] = await db!`select kizunasync._pk_object('{id}'::text[], '42') as decoded`
+    const [composite] = await db!`select kizunasync._pk_object('{label,n}'::text[], ${compositePk(ESCAPED_LABEL, '1')}) as decoded`
+
+    expect(single.decoded).toEqual({ id: '42' })
+    expect(composite.decoded).toEqual({ label: ESCAPED_LABEL, n: '1' })
+  })
+})
+
+// MARK: - Seed
+
+describe.skipIf(!reachable)('_seed_changelog on rows that predate the triggers', () => {
+  test('every key shape queues one upsert per row, keyed by its pk text', async () => {
+    expect(seeded).toEqual({ [FEED]: '2', [COUNTER]: '2', [SLUG]: '2', [PAIR]: '2', [LABEL]: '1', [CARD]: '0', [MINTED]: '0' })
+    expect((await changelogPks(FEED)).slice(0, 2).sort()).toEqual(['1', '2'])
+    expect((await changelogPks(COUNTER)).slice(0, 2).sort()).toEqual(['1', '2'])
+    expect((await changelogPks(SLUG)).slice(0, 2).sort()).toEqual(['alpha', 'beta'])
+    expect((await changelogPks(PAIR)).slice(0, 2).sort()).toEqual([compositePk('1', '1'), compositePk('1', '2')])
+    expect((await changelogPks(LABEL)).slice(0, 1)).toEqual([compositePk(ESCAPED_LABEL, '1')])
+  })
+
+  test('a second call queues nothing', async () => {
+    for (const table of TABLES) {
+      const [again] = await db!`select kizunasync._seed_changelog(${table})::text as queued`
+
+      expect(again.queued, table).toBe('0')
+    }
+  })
+})
+
+// MARK: - Pull
+
+describe.skipIf(!reachable)('a pull delivers every key shape', () => {
+  test('a bootstrap page carries the seeded rows under their pk text, key columns included, in (seq, table, pk) order', async () => {
+    const reader = await newUser()
+    const page = await pullAs(reader, everyBucket(OWNER_A))
+
+    expect(page.signal).toBeNull()
+    expect(pksOf(page, FEED)).toContain('1')
+    expect(pksOf(page, COUNTER)).toContain('2')
+    expect(pksOf(page, SLUG)).toContain('alpha')
+    expect(pksOf(page, PAIR)).toContain(compositePk('1', '2'))
+    expect(pksOf(page, LABEL)).toContain(compositePk(ESCAPED_LABEL, '1'))
+    expect(page.rows.find((row) => row.table === PAIR && row.pk === compositePk('1', '2'))?.row).toEqual({
+      a: 1,
+      b: 2,
+      likes: 0,
+      owner_id: OWNER_A,
+      title: 'second',
+    })
+    expect(page.rows.find((row) => row.table === LABEL)?.row).toMatchObject({ label: ESCAPED_LABEL, n: 1 })
+
+    for (let index = 1; index < page.rows.length; index++) {
+      expect(BigInt(page.rows[index]!.seq) > BigInt(page.rows[index - 1]!.seq)).toBe(true)
+    }
+  })
+
+  test('a bucket names only its own value: another owner receives no row of the bucketed tables', async () => {
+    const reader = await newUser()
+    const page = await pullAs(reader, everyBucket(OWNER_B))
+
+    expect(pksOf(page, COUNTER)).toEqual([])
+    expect(pksOf(page, PAIR)).toEqual([])
+    expect(pksOf(page, SLUG).length).toBeGreaterThan(0)
+  })
+})
+
+// MARK: - Push
+
+describe.skipIf(!reachable)('a push targets rows by their pk text', () => {
+  test('an insert fills the key columns it omits from the pk', async () => {
+    const writer = await newUser()
+    const verdicts = await pushAs(writer, [
+      { table: COUNTER, op: 'insert', pk: '1001', columns: { owner_id: OWNER_A, title: 'provided' } },
+      { table: SLUG, op: 'insert', pk: 'gamma', columns: { title: 'provided' } },
+      { table: PAIR, op: 'insert', pk: compositePk('7', '8'), columns: { owner_id: OWNER_A, title: 'provided' } },
+      { table: LABEL, op: 'insert', pk: compositePk('tab\there', '5'), columns: { title: 'provided' } },
+    ])
+
+    expect(answers(verdicts)).toEqual([['applied', undefined], ['applied', undefined], ['applied', undefined], ['applied', undefined]])
+    expect(await readRow(COUNTER, 't.id = $1', [1001])).toMatchObject({ id: 1001, title: 'provided' })
+    expect(await readRow(SLUG, 't.slug = $1', ['gamma'])).toMatchObject({ slug: 'gamma' })
+    expect(await readRow(PAIR, 't.a = $1 and t.b = $2', [7, 8])).toMatchObject({ a: 7, b: 8, title: 'provided' })
+    expect(await readRow(LABEL, 't.label = $1 and t.n = $2', ['tab\there', 5])).toMatchObject({ title: 'provided' })
+    expect(await changelogPks(PAIR)).toContain(compositePk('7', '8'))
+    expect(await changelogPks(LABEL)).toContain(compositePk('tab\there', '5'))
+  })
+
+  test('an insert whose key columns match the pk applies, whatever JSON type carries them', async () => {
+    const writer = await newUser()
+    const verdicts = await pushAs(writer, [
+      { table: COUNTER, op: 'insert', pk: '1002', columns: { id: '1002', owner_id: OWNER_A, title: 'matching' } },
+      { table: PAIR, op: 'insert', pk: compositePk('9', '10'), columns: { a: 9, b: '10', owner_id: OWNER_A, title: 'matching' } },
+    ])
+
+    expect(answers(verdicts)).toEqual([['applied', undefined], ['applied', undefined]])
+  })
+
+  test('an insert whose key column disagrees with the pk is CONSTRAINT and writes nothing', async () => {
+    const writer = await newUser()
+    const verdicts = await pushAs(writer, [
+      { table: COUNTER, op: 'insert', pk: '1003', columns: { id: 1004, owner_id: OWNER_A, title: 'mismatch' } },
+      { table: PAIR, op: 'insert', pk: compositePk('11', '12'), columns: { b: 13, owner_id: OWNER_A, title: 'mismatch' } },
+      { table: LABEL, op: 'insert', pk: compositePk('x', '1'), columns: { label: 'y', title: 'mismatch' } },
+    ])
+
+    expect(verdicts.map(({ verdict, reason, server_row }) => [verdict, reason, server_row])).toEqual([
+      ['rejected', 'CONSTRAINT', null],
+      ['rejected', 'CONSTRAINT', null],
+      ['rejected', 'CONSTRAINT', null],
+    ])
+    expect(await readRow(COUNTER, 't.id in (1003, 1004)', [])).toBeNull()
+    expect(await readRow(PAIR, 't.a = 11', [])).toBeNull()
+    expect(await changelogPks(PAIR)).not.toContain(compositePk('11', '12'))
+  })
+
+  test('an update of a non-key column applies to the row its pk names', async () => {
+    const writer = await newUser()
+    const verdicts = await pushAs(writer, [
+      { table: COUNTER, op: 'update', pk: '1', columns: { title: 'renamed' } },
+      { table: SLUG, op: 'update', pk: 'alpha', columns: { title: 'renamed' } },
+      { table: PAIR, op: 'update', pk: compositePk('1', '1'), columns: { title: 'renamed' }, transforms: { likes: { op: 'increment', by: 2 } } },
+    ])
+
+    expect(answers(verdicts)).toEqual([['applied', undefined], ['applied', undefined], ['applied', undefined]])
+    expect(verdicts[2]?.server_row).toMatchObject({ a: 1, b: 1, likes: 2, title: 'renamed' })
+    expect(await readRow(PAIR, 't.a = 1 and t.b = 2', [])).toMatchObject({ title: 'second', likes: 0 })
+  })
+
+  test('a key column in an update, as a column or a transform, is COLUMN_DENIED and changes nothing', async () => {
+    const writer = await newUser()
+    const verdicts = await pushAs(writer, [
+      { table: COUNTER, op: 'update', pk: '2', columns: { id: 3 } },
+      { table: PAIR, op: 'update', pk: compositePk('1', '2'), columns: { a: 5, title: 'moved' } },
+      { table: PAIR, op: 'update', pk: compositePk('1', '2'), transforms: { b: { op: 'increment', by: 1 } } },
+    ])
+
+    expect(answers(verdicts)).toEqual([['rejected', 'COLUMN_DENIED'], ['rejected', 'COLUMN_DENIED'], ['rejected', 'COLUMN_DENIED']])
+    expect(verdicts[1]?.server_row).toMatchObject({ a: 1, b: 2, title: 'second' })
+    expect(await readRow(PAIR, 't.a = 1 and t.b = 2', [])).toMatchObject({ title: 'second' })
+  })
+
+  test('a precondition compares against the row the pk names', async () => {
+    const writer = await newUser()
+    const verdicts = await pushAs(writer, [
+      { table: PAIR, op: 'update', pk: compositePk('1', '2'), columns: { title: 'late' }, precondition: { title: 'stale' } },
+      { table: PAIR, op: 'delete', pk: compositePk('1', '2'), precondition: { title: 'stale' } },
+      { table: SLUG, op: 'update', pk: 'beta', columns: { title: 'checked' }, precondition: { title: 'second' } },
+    ])
+
+    expect(answers(verdicts)).toEqual([['rejected', 'PRECONDITION'], ['rejected', 'PRECONDITION'], ['applied', undefined]])
+    expect(verdicts[0]?.server_row).toMatchObject({ a: 1, b: 2, title: 'second' })
+    expect(verdicts[1]?.server_row).toMatchObject({ a: 1, b: 2, title: 'second' })
+  })
+
+  test('a push to the pull-only table is refused with KZP01', async () => {
+    const outcome = await pushOutcome(await newUser(), [{ table: FEED, op: 'insert', pk: '99', columns: { title: 'nope' } }])
+
+    expect(outcome.raised && outcome.sqlstate).toBe('KZP01')
+  })
+})
+
+describe.skipIf(!reachable)('the push guard refuses a malformed pk with 22023', () => {
+  const cases: Array<[string, IMutation]> = [
+    ['a pk that is not a string', { table: COUNTER, op: 'update', pk: 42, columns: { title: 'x' } }],
+    ['an empty pk', { table: SLUG, op: 'update', pk: '', columns: { title: 'x' } }],
+    ['a composite pk that is not JSON', { table: PAIR, op: 'update', pk: '1,2', columns: { title: 'x' } }],
+    ['a composite pk with too few components', { table: PAIR, op: 'update', pk: compositePk('1'), columns: { title: 'x' } }],
+    ['a composite pk with a number for a component', { table: PAIR, op: 'update', pk: '[1, "2"]', columns: { title: 'x' } }],
+    ['a composite pk that is a JSON object', { table: PAIR, op: 'update', pk: '{"a": "1", "b": "2"}', columns: { title: 'x' } }],
+    ['a pk its uuid key column refuses', { table: CARD, op: 'update', pk: 'abc', columns: { title: 'x' } }],
+    ['an uppercase uuid pk', { table: CARD, op: 'update', pk: 'A1B2C3D4-0000-4000-8000-000000000001', columns: { title: 'x' } }],
+    ['a composite pk with odd spacing', { table: PAIR, op: 'update', pk: '[ "1","2" ]', columns: { title: 'x' } }],
+    ['a composite pk with a component of the wrong count', { table: PAIR, op: 'update', pk: compositePk('1', '2', '3'), columns: { title: 'x' } }],
+    ['an integer component with a leading zero', { table: PAIR, op: 'update', pk: compositePk('01', '2'), columns: { title: 'x' } }],
+    ['a single integer pk with a leading zero', { table: COUNTER, op: 'update', pk: '007', columns: { title: 'x' } }],
+    ['an integer component outside its column type', { table: PAIR, op: 'update', pk: compositePk('1', '99999999999'), columns: { title: 'x' } }],
+  ]
+
+  for (const [name, bad] of cases) {
+    test(`${name} refuses the whole batch`, async () => {
+      const outcome = await pushOutcome(await newUser(), [{ table: SLUG, op: 'update', pk: 'beta', columns: { title: 'first of two' } }, bad])
+
+      expect(outcome.raised).toBe(true)
+
+      if (outcome.raised) {
+        expect(outcome.sqlstate).toBe('22023')
+        expect(outcome.message).toContain('mutation 2')
+        expect(outcome.message).toContain('pk')
+      }
+    })
+  }
+})
+
+// MARK: - Deletes
+
+describe.skipIf(!reachable)('a delete leaves a tombstone keyed by the pk text', () => {
+  test('a pushed delete of a bucketed composite row reaches the owner that received it, and a later edit is DELETE_WINS', async () => {
+    const owner = await newUser()
+
+    await db!.unsafe(`insert into public.${PAIR} (a, b, owner_id, title) values (20, 1, $1, 'doomed')`, [owner])
+    const base = await sequenceTop()
+
+    await pullAs(owner, [{ table: PAIR, params: { owner_id: owner } }], seedBase)
+    const deleted = await pushAs(owner, [{ table: PAIR, op: 'delete', pk: compositePk('20', '1') }])
+    const page = await pullAs(owner, [{ table: PAIR, params: { owner_id: owner } }], base)
+    const [tombstone] = await db!`select bucket_value from kizunasync._tombstones where table_name = ${PAIR} and pk = ${compositePk('20', '1')}`
+    const edit = await pushAs(owner, [{ table: PAIR, op: 'update', pk: compositePk('20', '1'), columns: { title: 'too late' } }])
+
+    expect(answers(deleted)).toEqual([['applied', undefined]])
+    expect(page.tombstones.map((entry) => entry.pk)).toEqual([compositePk('20', '1')])
+    expect(tombstone?.bucket_value).toBe(owner)
+    expect(answers(edit)).toEqual([['rejected', 'DELETE_WINS']])
+  })
+
+  test('direct deletes on the unbucketed tables reach a reader that received the rows', async () => {
+    const reader = await newUser()
+    const [fed] = await db!.unsafe(`insert into public.${FEED} (title) values ('short-lived') returning id::text as id`)
+
+    await db!.unsafe(`insert into public.${SLUG} (slug, title) values ('ephemeral', 'short-lived')`)
+    await pullAs(reader, [{ table: FEED, params: {} }, { table: SLUG, params: {} }])
+    const base = await sequenceTop()
+
+    await db!.unsafe(`delete from public.${FEED} where id = $1`, [fed.id])
+    await db!.unsafe(`delete from public.${SLUG} where slug = 'ephemeral'`)
+    const page = await pullAs(reader, [{ table: FEED, params: {} }, { table: SLUG, params: {} }], base)
+
+    expect(page.tombstones.map((entry) => [entry.table, entry.pk])).toEqual([
+      [FEED, fed.id as string],
+      [SLUG, 'ephemeral'],
+    ])
+    expect(await tombstonePks(FEED)).toContain(fed.id as string)
+  })
+})
+
+// MARK: - Direct writes
+
+describe.skipIf(!reachable)('direct writes through the Data API role fire the triggers with the pk text', () => {
+  test('an insert, an update, and a delete as authenticated reach a pull as a row, then a tombstone', async () => {
+    const writer = await newUser()
+    const reader = await newUser()
+    const base = await sequenceTop()
+
+    await asUser(writer, async (conn) => {
+      await conn.unsafe(`insert into public.${PAIR} (a, b, owner_id, title) values (30, 3, $1, 'direct')`, [OWNER_B])
+      await conn.unsafe(`insert into public.${COUNTER} (id, owner_id, title) values (3000, $1, 'direct')`, [OWNER_B])
+      await conn.unsafe(`update public.${PAIR} set title = 'direct edit' where a = 30 and b = 3`)
+    })
+    const first = await pullAs(reader, [{ table: PAIR, params: { owner_id: OWNER_B } }, { table: COUNTER, params: { owner_id: OWNER_B } }], base)
+    const middle = await sequenceTop()
+
+    await asUser(writer, (conn) => conn.unsafe(`delete from public.${PAIR} where a = 30 and b = 3`))
+    const second = await pullAs(reader, [{ table: PAIR, params: { owner_id: OWNER_B } }], middle)
+
+    expect(first.rows.map((row) => [row.table, row.pk, row.row.title])).toEqual([
+      [COUNTER, '3000', 'direct'],
+      [PAIR, compositePk('30', '3'), 'direct edit'],
+    ])
+    expect(second.tombstones.map((entry) => entry.pk)).toEqual([compositePk('30', '3')])
+  })
+
+  test('the escaped composite key survives a direct write and its delete byte for byte', async () => {
+    const label = 'quote " backslash \\ newline \n unit \u0001 kanji 絆'
+    const pk = compositePk(label, '9')
+    const reader = await newUser()
+
+    await db!.unsafe(`insert into public.${LABEL} (label, n, title) values ($1, 9, 'escaped')`, [label])
+    const received = await pullAs(reader, [{ table: LABEL, params: {} }])
+    const base = await sequenceTop()
+
+    await db!.unsafe(`delete from public.${LABEL} where label = $1 and n = 9`, [label])
+    const removed = await pullAs(reader, [{ table: LABEL, params: {} }], base)
+    const [computed] = await db!`select kizunasync._row_pk(${LABEL}, ${{ label, n: 9, title: 'escaped' }}::jsonb) as pk`
+
+    expect(pksOf(received, LABEL)).toContain(pk)
+    expect(removed.tombstones.map((entry) => entry.pk)).toEqual([pk])
+    expect(computed.pk).toBe(pk)
+  })
+})
+
+// MARK: - hlc
+
+describe.skipIf(!reachable)('hlc mode on the composite table', () => {
+  test('stamps live under the pk text, an older write is SUPERSEDED, and a delete clears them', async () => {
+    const writer = await newUser()
+    const pk = compositePk('40', '4')
+
+    await db!`update kizunasync._config set conflict_mode = 'hlc' where table_name = ${PAIR}`
+
+    try {
+      const inserted = await pushAs(writer, [{ table: PAIR, op: 'insert', pk, columns: { owner_id: OWNER_A, title: 'stamped' }, hlc: NEWER_HLC }])
+      const [stamps] = await db!`select column_hlc from kizunasync._row_hlc where table_name = ${PAIR} and pk = ${pk}`
+      const older = await pushAs(writer, [{ table: PAIR, op: 'update', pk, columns: { title: 'older' }, hlc: OLDER_HLC }])
+      const deleted = await pushAs(writer, [{ table: PAIR, op: 'delete', pk, hlc: NEWER_HLC }])
+      const [left] = await db!`select count(*)::int as n from kizunasync._row_hlc where table_name = ${PAIR} and pk = ${pk}`
+
+      expect(answers(inserted)).toEqual([['applied', undefined]])
+      expect(stamps?.column_hlc).toMatchObject({ title: NEWER_HLC })
+      expect(answers(older)).toEqual([['rejected', 'SUPERSEDED']])
+      expect(older[0]?.server_row).toMatchObject({ a: 40, b: 4, title: 'stamped' })
+      expect(answers(deleted)).toEqual([['applied', undefined]])
+      expect(left.n).toBe(0)
+    } finally {
+      await db!`update kizunasync._config set conflict_mode = 'arrival' where table_name = ${PAIR}`
+    }
+  })
+})
+
+// MARK: - Conflict journal
+
+describe.skipIf(!reachable)('the conflict journal on the composite table', () => {
+  test('an overwrite rides the winning pull under the pk text', async () => {
+    const writer = await newUser()
+    const pk = compositePk('50', '5')
+
+    await db!`update kizunasync._config set conflict_journal = true where table_name = ${PAIR}`
+
+    try {
+      await pushAs(writer, [{ table: PAIR, op: 'insert', pk, columns: { owner_id: writer, title: 'before' } }])
+      const base = await sequenceTop()
+
+      await pushAs(writer, [{ table: PAIR, op: 'update', pk, columns: { title: 'after' } }])
+      const page = await pullAs(writer, [{ table: PAIR, params: { owner_id: writer } }], base)
+
+      expect(page.conflicts?.map(({ column_name, pk: conflictPk, loser_value }) => [column_name, conflictPk, loser_value])).toEqual([
+        ['title', pk, 'before'],
+      ])
+    } finally {
+      await db!`update kizunasync._config set conflict_journal = false where table_name = ${PAIR}`
+    }
+  })
+})
+
+// MARK: - Lock
+
+describe.skipIf(!reachable)('a push locks the row its pk names', () => {
+  test('an update waits on a direct writer of the composite row and decides on what it committed', async () => {
+    const writer = await newUser()
+    const holder = await connect()
+    const pusher = await connect()
+
+    await db!.unsafe(`insert into public.${PAIR} (a, b, owner_id, title) values (60, 6, $1, 'seeded')`, [OWNER_A])
+    await holder`begin`
+    await holder.unsafe(`update public.${PAIR} set title = 'held' where a = 60 and b = 6`)
+    await beginAs(pusher, writer)
+    const [{ pid }] = await pusher`select pg_backend_pid() as pid`
+    const batch = {
+      atomic: false,
+      mutations: [{ mutation_id: uid(), table: PAIR, op: 'update', pk: compositePk('60', '6'), columns: { title: 'mine' }, precondition: { title: 'seeded' } }],
+    }
+
+    minted.mutationIds.add(batch.mutations[0]!.mutation_id)
+    const waiting = pusher`select kizunasync.push(${batch}::jsonb, null::uuid, 1) as resp`.then((rows) => rows[0].resp as { verdicts: TVerdict[] })
+    let blocked = false
+
+    for (let attempt = 0; attempt < BLOCK_POLLS && !blocked; attempt++) {
+      const [row] = await db!`select wait_event_type from pg_stat_activity where pid = ${pid}`
+
+      blocked = row?.wait_event_type === 'Lock'
+
+      if (!blocked) {
+        await Bun.sleep(BLOCK_POLL_MS)
+      }
+    }
+    await holder`commit`
+    const response = await waiting
+
+    await pusher`commit`
+
+    expect(blocked).toBe(true)
+    expect(answers(response.verdicts)).toEqual([['rejected', 'PRECONDITION']])
+    expect(response.verdicts[0]?.server_row).toMatchObject({ a: 60, b: 6, title: 'held' })
+  })
+})
+
+// MARK: - Readability
+
+describe.skipIf(!reachable)('every key column must be readable', () => {
+  test('a key column the role may not read refuses the pull with KZL02 naming it', async () => {
+    const reader = await newUser()
+    const refusal = await rolledBack(async (conn) => {
+      await conn.unsafe(`revoke select on public.${PAIR} from authenticated`)
+      await conn.unsafe(`grant select (a, owner_id, title, likes) on public.${PAIR} to authenticated`)
+      await conn`select set_config('request.jwt.claims', ${claims(reader)}, true)`
+      await conn`set local role authenticated`
+
+      try {
+        await conn`select kizunasync.pull(${[{ table: PAIR, params: { owner_id: OWNER_A } }]}::jsonb, '0', 1, 500)`
+
+        return null
+      } catch (error) {
+        return { sqlstate: sqlstateOf(error), message: error instanceof Error ? error.message : String(error) }
+      }
+    })
+
+    expect(refusal?.sqlstate).toBe('KZL02')
+    expect(refusal?.message).toContain('"b"')
+  })
+})
+
+// MARK: - Index-friendly lookup
+
+describe.skipIf(!reachable)('a row lookup casts the pk side only, so the key index serves it', () => {
+  test('_pk_locator spells one cast per key column on the pk side', async () => {
+    const [single] = await db!`select kizunasync._pk_locator(${COUNTER}, 't', 1) as locator`
+    const [composite] = await db!`select kizunasync._pk_locator(${PAIR}, 't', 2) as locator`
+
+    expect(single.locator).toBe('t.id = $1::bigint')
+    expect(composite.locator).toBe('t.a = ($2::jsonb ->> 0)::bigint and t.b = ($2::jsonb ->> 1)::integer')
+  })
+
+  test('_pk_predicate quotes every identifier and refuses a type outside the key types', async () => {
+    const [quoted] = await db!`select kizunasync._pk_predicate('T x', '{"Weird Col",n}'::text[], '{text,smallint}'::text[], 3) as predicate`
+    let refusal: string | null = null
+
+    try {
+      await db!`select kizunasync._pk_predicate('t', '{amount}'::text[], '{numeric}'::text[], 1)`
+    } catch (error) {
+      refusal = sqlstateOf(error)
+    }
+    expect(quoted.predicate).toBe('"T x"."Weird Col" = ($3::jsonb ->> 0)::text and "T x".n = ($3::jsonb ->> 1)::smallint')
+    expect(refusal).toBe('0A000')
+  })
+
+  for (const [table, pk] of [
+    [COUNTER, '2'],
+    [PAIR, compositePk('1', '2')],
+  ] as const) {
+    test(`the render statement on ${table} is an index scan on its primary key`, async () => {
+      const plan = await rolledBack(async (conn) => {
+        const [{ locator }] = await conn`select kizunasync._pk_locator(${table}, 't', 1) as locator`
+
+        await conn`set local enable_seqscan = off`
+        await conn.unsafe(`prepare keys_render(text) as select to_jsonb(r) from (select t.* from public.${table} t where ${locator as string}) r`)
+        const [row] = await conn.unsafe(`explain (format json) execute keys_render('${pk}')`)
+
+        await conn.unsafe('deallocate keys_render')
+
+        return JSON.stringify(row['QUERY PLAN'])
+      })
+
+      expect(plan).toContain('Index Scan')
+      expect(plan).toContain(`${table}_pkey`)
+    })
+  }
+})
+
+// MARK: - Unconfigured tables
+
+describe.skipIf(!reachable)('a table with capture triggers and no _config row is not synced', () => {
+  test('direct writes succeed and queue nothing, even though the table has no id column', async () => {
+    const queued = await rolledBack(async (conn) => {
+      await conn.unsafe(`insert into public.${UNSYNCED} (code, title) values ('a', 'first'), ('b', 'second')`)
+      await conn.unsafe(`update public.${UNSYNCED} set title = 'edited' where code = 'a'`)
+      await conn.unsafe(`delete from public.${UNSYNCED} where code = 'b'`)
+      const [row] = await conn.unsafe('select count(*)::int as n from kizunasync._change_pending where table_name = $1', [UNSYNCED])
+
+      return row.n as number
+    })
+
+    await db!.unsafe(`insert into public.${UNSYNCED} (code, title) values ('kept', 'committed')`)
+    await db!.unsafe(`delete from public.${UNSYNCED} where code = 'kept'`)
+    const [ledgers] = await db!.unsafe(
+      `select (select count(*) from kizunasync._changelog where table_name = $1)::int
+            + (select count(*) from kizunasync._tombstones where table_name = $1)::int as n`,
+      [UNSYNCED],
+    )
+
+    expect(queued).toBe(0)
+    expect(ledgers.n).toBe(0)
+  })
+})
+
+// MARK: - Generated keys
+
+describe.skipIf(!reachable)('a key generated always as identity', () => {
+  test('a pushed insert that names it is CONSTRAINT for that mutation, and the rest of the batch applies', async () => {
+    const writer = await newUser()
+    const card = uid()
+    const verdicts = await pushAs(writer, [
+      { table: MINTED, op: 'insert', pk: '5', columns: { title: 'offline' } },
+      { table: CARD, op: 'insert', pk: card, columns: { title: 'kept' } },
+    ])
+
+    expect(verdicts.map(({ verdict, reason, server_row }) => [verdict, reason, server_row])).toEqual([
+      ['rejected', 'CONSTRAINT', null],
+      ['applied', undefined, undefined],
+    ])
+    expect(await readRow(MINTED, 't.id = 5', [])).toBeNull()
+    expect(await readRow(CARD, 't.id = $1', [card])).toMatchObject({ title: 'kept' })
+  })
+})
+
+// MARK: - Relabel
+
+describe.skipIf(!reachable)('_relabel_changelog on a composite key', () => {
+  test('relabels the changelog rows of the pairs the table holds and drops those of pairs it no longer holds', async () => {
+    const [counts] = await db!.unsafe(
+      `select count(*) filter (where exists (select 1 from public.${PAIR} t where kizunasync._pk_text('{a,b}', to_jsonb(t)) = cl.pk))::int as held,
+              count(*)::int as total
+         from kizunasync._changelog cl where cl.table_name = $1`,
+      [PAIR],
+    )
+    const [relabeled] = await db!`select kizunasync._relabel_changelog(${PAIR})::int as n`
+    const [left] = await db!`select count(*)::int as n from kizunasync._changelog where table_name = ${PAIR}`
+    const [labels] = await db!.unsafe(
+      `select bool_and(cl.bucket_value = t.owner_id::text) as ok
+         from kizunasync._changelog cl join public.${PAIR} t on kizunasync._pk_text('{a,b}', to_jsonb(t)) = cl.pk
+        where cl.table_name = $1`,
+      [PAIR],
+    )
+
+    expect(counts.total).toBeGreaterThan(counts.held)
+    expect(relabeled.n).toBe(counts.held)
+    expect(left.n).toBe(counts.held)
+    expect(labels.ok).toBe(true)
+  })
+})

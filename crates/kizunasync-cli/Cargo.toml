@@ -1,0 +1,60 @@
+[package]
+name = "kizunasync-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The kizunasync command-line tool: init/sync/status/doctor/lint/upgrade/deprovision/mock over a direct Postgres connection or the Supabase Management API"
+publish = false
+
+[[bin]]
+name = "kizunasync"
+path = "src/main.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+hex = { workspace = true }
+# Argument parsing: the ecosystem-standard derive parser, so the command surface is declared once and `--help` is generated from it.
+clap = { version = "4", features = ["derive"] }
+# The lint classifier ports regexes that use lookahead (`add (?!constraint) …`); the `regex` crate has no lookaround, `fancy-regex` does.
+fancy-regex = "0.14"
+# Direct Postgres: the blocking wrapper over tokio-postgres, so the CLI stays a straight-line program with no runtime in its own API.
+postgres = "0.19"
+# rustls TLS for every hosted connection, no OpenSSL toolchain, same posture as kizunasync-remote-http.
+tokio-postgres-rustls = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+# The Management API transport (`--project-ref`) and doctor's live Data API probe: blocking reqwest, rustls only.
+reqwest = { workspace = true, features = ["blocking"] }
+# md5 of a pack file's SQL: the ledger's content_hash algorithm is fixed by the shipped pack, not a choice.
+md-5 = "0.10"
+# The TTY wizard: Clack-style prompts (the Astro / shadcn / create-turbo look) with a vermilion theme.
+cliclack = "0.5"
+console = "0.16"
+# Ctrl+C outside a prompt: console and cliclack see it only as a key while a prompt holds the terminal raw, and the workspace's tokio has no signal feature, so a SIGINT during a write or a network call needs a safe handler of its own.
+ctrlc = "3"
+# Reads the Personal Access Token the Supabase CLI already stored in the OS credential store, so `kizunasync init` never asks for a token the machine has; platform-native backends only (Keychain / Credential Manager / Secret Service).
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# Keyring values arrive base64-wrapped behind go-keyring's `go-keyring-base64:` marker; already in the lockfile under reqwest, so decoding them adds no supply-chain surface.
+base64 = "0.22"
+# supabase/config.toml: parsed, not scanned; already in the lockfile through uniffi.
+toml = "0.9"
+# Migration timestamps: a calendar the standard library lacks, the way the Supabase CLI uses Go's time package.
+jiff = { version = "0.2", default-features = false, features = ["std"] }
+
+[target.'cfg(unix)'.dependencies]
+# Terminal modes and signals without unsafe code: a question turns ISIG off so Ctrl+C reaches it as a key while it is still drawn, the SIGINT handler puts back the mode the run started in, and it stops a running `supabase db push` with SIGINT, then SIGTERM. Already in the lockfile through ctrlc, which enables its signal feature.
+nix = { version = "0.31", default-features = false, features = ["signal", "term"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[features]
+# Static libdbus for the Secret Service backend, so the released Linux binary does not require libdbus-1 on the host.
+vendored-dbus = ["keyring/vendored"]
+
+[lints]
+workspace = true
