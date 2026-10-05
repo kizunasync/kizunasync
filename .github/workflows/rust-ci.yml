@@ -146,7 +146,7 @@ jobs:
 
       # Speedup: install prebuilt cargo tools instead of building from scratch.
       - name: Install cargo tools (nextest, cargo-deny)
-        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
         with:
           tool: cargo-nextest,cargo-deny
 
@@ -819,7 +819,7 @@ jobs:
           link-to-sdk: true
 
       - name: Install cargo-ndk
-        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
         with:
           tool: cargo-ndk
 
@@ -994,7 +994,7 @@ jobs:
           link-to-sdk: true
 
       - name: Install cargo-ndk
-        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2
         with:
           tool: cargo-ndk
 
