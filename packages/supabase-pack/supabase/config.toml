@@ -46,3 +46,6 @@ enable_anonymous_sign_ins = true
 [auth.email]
 enable_signup = true
 enable_confirmations = false
+
+[experimental.pgdelta]
+enabled = true
