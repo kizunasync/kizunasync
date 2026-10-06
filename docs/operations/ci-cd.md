@@ -34,9 +34,9 @@ The repository has eight GitHub Actions workflows. A push to `develop` and every
 | [Bun](https://bun.sh/docs/installation), workspace | `bun@1.4.2`, with `engines.bun` at `>=1.3.0` | Root `packageManager` and `engines` |
 | Bun, workflows | `1.4.2` | `BUN_VERSION` in `ci.yml`, `rust-ci.yml`, `release-npm.yml`, `release-swift.yml`, `release-kotlin.yml`, `deploy-demo.yml`, and `deploy-website.yml` |
 | [Node](https://grokipedia.com/page/Node.js) | `^20.19.0 \|\| >=22.12.0` | Root `engines` |
-| Turbo | `2.10.13-canary.4`, with experimental Cargo workspace discovery (`kizunasync-cargo`) and `experimentalTaskCommand` | Root `turbo.json` `futureFlags` |
-| Supabase CLI | `^2.117.0` | `@kizunasync/supabase-pack` dev dependency; the workflow installs `latest` through `supabase/setup-cli@v3` |
-| Next.js | `^16.3.4` | Website and sync-inspector dependency |
+| Turbo | `2.11.7`, with experimental Cargo workspace discovery (`kizunasync-cargo`) and `experimentalTaskCommand` | Root `turbo.json` `futureFlags` |
+| Supabase CLI | `^2.119.0` | `@kizunasync/supabase-pack` dev dependency; the workflow installs `latest` through `supabase/setup-cli@v3` |
+| Next.js | `^16.3.8` | Website and sync-inspector dependency |
 | Rust | Stable, plus rustfmt, clippy, and `llvm-tools` | `rust-toolchain.toml`, which rustup reads to install all three locally and in CI; `scripts/build-wasm.ts` archives the wasm32 SQLite objects with the `llvm-ar` that `llvm-tools` ships |
 | Gradle | `8.7` wrapper, for the Kotlin binding and the Android example | The Rust workflow uses the committed wrapper |
 | Android Gradle Plugin | `8.6.1` | Kotlin binding and Android example settings; wrapper 8.7 satisfies this pin |

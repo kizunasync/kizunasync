@@ -55,7 +55,7 @@
     "@react-native-community/netinfo": "^11.5.2",
     "@supabase/supabase-js": "^2.117.2",
     "@types/bun": "^1.4.2",
-    "@types/node": "^24.19.0",
+    "@types/node": "^24.19.1",
     "expo-asset": "~57.0.18",
     "expo-sqlite": "~57.0.3",
     "react-native": "0.87.1",
