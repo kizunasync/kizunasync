@@ -53,7 +53,7 @@
     "uniffi-bindgen-react-native": "0.31.0-6"
   },
   "peerDependencies": {
-    "react-native": ">=0.86.0"
+    "react-native": ">=0.86.0 <0.88.0"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
