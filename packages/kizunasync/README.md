@@ -3,6 +3,10 @@
   <span style="margin: 0; font-size: 1.2em;">Kizuna Sync</span>
 </h1>
 
+<p align="center">
+  <a href="https://socket.dev/npm/package/kizunasync"><img src="https://socket.dev/api/badge/npm/package/kizunasync" alt="Socket" /></a>
+</p>
+
 Kizuna Sync gives a Supabase app a local SQLite database, so the app keeps reading and writing while the device is offline. A durable outbox holds the writes until they reach your Supabase project, pull is incremental and fenced, push is transactional, and conflict resolution is column-level. The server half is a readable SQL pack that the `kizunasync` CLI installs into the project you own.
 
 `kizunasync` is the one npm package an app installs. It holds the CLI, the SQL pack, every JavaScript entry point as a subpath, and the React Native module that autolinks in Expo and React Native apps. npm also installs the single `@kizunasync/<platform>` package that matches the machine, which carries the CLI binary and the Rust engine for Node and Bun.

@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-c2410c?style=flat-square" alt="Apache-2.0" /></a>
+  <a href="https://socket.dev/npm/package/kizunasync"><img src="https://socket.dev/api/badge/npm/package/kizunasync" alt="Socket" /></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Status-Alpha-8b8b9e?style=flat-square" alt="Alpha" /></a>
   <a href="packages/protocol/README.md"><img src="https://img.shields.io/badge/Protocol-spec--first-c2410c?style=flat-square" alt="Protocol spec-first" /></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-2ea44f?style=flat-square" alt="PRs welcome" /></a>
