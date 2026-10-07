@@ -121,6 +121,9 @@ jobs:
     runs-on: ubuntu-22.04
     # Covers demo Playwright lane too; ample time for full stack plus browser tests.
     timeout-minutes: 60
+    env:
+      # config.toml turns on the experimental supabase stack for local runs; this job keeps the classic stack.
+      SUPABASE_EXPERIMENTAL_STACK: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

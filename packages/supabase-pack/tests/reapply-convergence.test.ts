@@ -14,8 +14,8 @@
  * table, each holding rows from before its triggers existed, with an update,
  * deletes, pushed verdicts, a client registration with its bucket grants, an
  * operator setting, and a confirmed attachment with its Storage object. pg_dump
- * runs in the local stack's container (KSYNC_DB_CONTAINER, as for the scratch
- * rebuild), whose binary matches the server, or from PATH. Skips loudly when
+ * runs in the local stack's container (found by resolveDbContainer, as for the
+ * scratch rebuild), whose binary matches the server, or from PATH. Skips loudly when
  * Postgres or pg_dump is unavailable.
  */
 
@@ -23,12 +23,13 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { SQL } from 'bun'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { resolveDbContainer } from './db-container'
 
 const DB_URL =
   process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:55322/postgres'
 
 const THROWAWAY = 'kizunasync_scratch_converge'
-const CONTAINER = process.env.KSYNC_DB_CONTAINER ?? 'supabase_db_kizunasync'
+const CONTAINER = resolveDbContainer()
 const ROOT = join(import.meta.dir, '../../..')
 const PACK_FILE = '0001_kizuna_init.sql'
 const STUB_SQL = readFileSync(join(ROOT, 'scripts/pg-vendor-stub.sql'), 'utf8')
@@ -54,22 +55,11 @@ interface ISyncedTable {
 
 // MARK: - Environment
 
-/** Runs a command and returns its stdout, or null when it cannot start or exits non-zero. */
-function run(command: string[]): string | null {
-  try {
-    const result = Bun.spawnSync(command, { stdout: 'pipe', stderr: 'pipe' })
-
-    return result.exitCode === 0 ? result.stdout.toString() : null
-  } catch {
-    return null
-  }
-}
-
 /** The pg_dump command line for the throwaway database: the stack container's own binary, else the one on PATH. */
 function dumpCommand(): string[] | null {
   const args = ['--schema-only', '-n', 'kizunasync']
 
-  if (run(['docker', 'inspect', CONTAINER]) !== null) {
+  if (CONTAINER !== null) {
     return ['docker', 'exec', CONTAINER, 'pg_dump', '-U', 'postgres', '-d', THROWAWAY, ...args]
   }
   if (Bun.which('pg_dump') !== null) {
@@ -96,7 +86,7 @@ try {
   )
 }
 if (reachable && DUMP === null) {
-  console.warn(`[reapply-convergence] SKIPPED: neither the ${CONTAINER} container nor a pg_dump on PATH is available.`)
+  console.warn(`[reapply-convergence] SKIPPED: neither a database container nor a pg_dump on PATH is available.`)
 }
 
 const ready = reachable && DUMP !== null

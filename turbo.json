@@ -90,23 +90,40 @@
       ]
     },
     "start": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "SUPABASE_EXPERIMENTAL_STACK"
+      ]
     },
     "stop": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "SUPABASE_EXPERIMENTAL_STACK"
+      ]
     },
     "status": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "SUPABASE_EXPERIMENTAL_STACK"
+      ]
     },
     "reset": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "SUPABASE_EXPERIMENTAL_STACK"
+      ]
     },
     "migrate": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "SUPABASE_EXPERIMENTAL_STACK"
+      ]
     },
     "test": {
       "passThroughEnv": [
-        "SUPABASE_DB_URL"
+        "KSYNC_DB_CONTAINER",
+        "SUPABASE_DB_URL",
+        "SUPABASE_EXPERIMENTAL_STACK"
       ]
     },
     "kizunasync-cargo#test": {

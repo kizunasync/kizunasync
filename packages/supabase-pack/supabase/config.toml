@@ -46,3 +46,10 @@ enable_anonymous_sign_ins = true
 [auth.email]
 enable_signup = true
 enable_confirmations = false
+
+# Local runs use the experimental `supabase stack` commands; CI sets SUPABASE_EXPERIMENTAL_STACK=0 and runs the classic stack.
+[experimental]
+stack = true
+
+[experimental.pgdelta]
+enabled = true

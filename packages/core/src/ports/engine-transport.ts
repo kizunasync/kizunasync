@@ -48,6 +48,7 @@ export interface IEngineLeadership {
   subscribe(onChange: (leader: boolean) => void): () => void
 }
 
+/* eslint-disable max-params -- mirrors the N-API engine constructor argument for argument */
 /**
  * Opens one engine. Mirrors `TNapiEngineConstructor` argument for argument:
  * a transport and the addon constructor are interchangeable at the one call
@@ -55,7 +56,6 @@ export interface IEngineLeadership {
  * in-memory store. `pull` and `push` never reject (a transport failure is an
  * envelope). `onEvent` receives the engine's tagged event JSON.
  */
-// eslint-disable-next-line max-params -- mirrors the N-API engine constructor argument for argument
 export type TEngineTransportFactory = (
   configJson: string,
   databasePath: string | null,
@@ -63,3 +63,4 @@ export type TEngineTransportFactory = (
   push: (requestJson: string) => Promise<string>,
   onEvent: (eventJson: string) => void,
 ) => IEngineTransport
+/* eslint-enable max-params */

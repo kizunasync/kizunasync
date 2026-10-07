@@ -175,6 +175,28 @@ Status: planned.
 
 When Expo SDK 58 ships Expo Modules 2.0 in beta, the React Native bridge becomes an Expo Module written as an annotated Swift and Kotlin class over the UniFFI bindings the native iOS and Android examples already use, replacing the generated Turbo Module and its C++ adapter in the `rn-uniffi` workspace. The JavaScript API of `kizunasync/expo` does not change. The module links the same `KizunaSyncEngine` product and `com.kizunasync:kizunasync-engine` artifact as the Turbo Module, built from the [XCFramework](./native-packaging.md#xcframework) and [AAR](./native-packaging.md#android-aar) lanes, so `npx expo run:ios` and `npx expo run:android` build it without a Rust toolchain in the application project. Expo Go stays unsupported, because it cannot load custom native code in any version, and a development build remains the supported path.
 
+### Local projects started with `supabase stack`
+
+Status: planned.
+
+The CLI's [connection picker](../cli/cli.md#interactive-mode) probes the local stack on the `[db] port` that `supabase/config.toml` gives Postgres, or on Supabase's default `54322` when the key is absent, and the [local fallback](../cli/cli.md#database-connection) at the end of the connection ladder builds its URL from the same port. When a local project's `config.toml` leaves the ports out, Supabase's experimental [`supabase stack`](https://supabase.com/docs/guides/local-development/running-multiple-local-projects) commands assign it ports between 20000 and 32767, so the probe misses the running project and the fallback URL names the wrong port. When no fixed database port is configured, discovery and the local fallback will ask the Supabase CLI for the running local project's database endpoint, `endpoints.database.sql` in the output of `supabase status --output-format json`, and both will stay local and read-only.
+
+### Declarative schema projects (pg-delta)
+
+Status: planned.
+
+Supabase's [declarative schemas](https://supabase.com/docs/guides/local-development/declarative-database-schemas) keep a project's schema as files under `supabase/schemas`, and `supabase db schema declarative sync` compares those files with the migration history and generates a migration through the [pg-delta diff engine](https://supabase.com/docs/guides/local-development/diff-engines), which `[experimental.pgdelta] enabled = true` turns on. With Supabase CLI 2.119.0 the pack and that workflow do not coexist. Once the migration `kizunasync init` writes is applied, `sync` refuses to plan: it reports the tree as a legacy export that lacks the `pg_cron` extension and the pack's three scheduled jobs (`kizunasync-compact-changelog`, `kizunasync-prune-clients`, and `kizunasync-reap-tombstones`), and warns that a sync generated from it could drop extensions or unschedule jobs. Regenerating the tree with `supabase db schema declarative generate` does not resolve it. The generator does not export the `kizunasync_rls` role, and its shadow database cannot replay the pack's `alter function … owner to kizunasync_rls` statements, which `0001_kizuna_init.sql` runs under a `create` grant on the `kizunasync` schema that it revokes afterwards. A project that carries the pack writes its application changes as versioned migrations instead, following the [migration guidance under `kizunasync lint`](../cli/cli.md#kizunasync-lint).
+
+The plan is to make the pack coexist with a project's declarative tree, either by making the pack representable as declarative files that include its role and its ownership transfers, or by keeping the `kizunasync` schema out of the project's declarative sync. The proof is a `sync` that plans no changes after `kizunasync init` and after `kizunasync upgrade`.
+
+### OrioleDB and Multigres
+
+Status: planned.
+
+[OrioleDB](https://supabase.com/blog/supabase-select-2026-recap#orioledb) is a Supabase storage engine in public beta, chosen when a project is created, that replaces the Postgres heap with an undo log and avoids table bloat and `VACUUM`. [Multigres](https://supabase.com/blog/supabase-select-2026-recap#multigres), in private alpha, gives Postgres multi-node high availability: it promotes a replica in seconds, and committed writes survive the failover.
+
+The pack's cursor guarantee rests on how heap Postgres publishes a commit. A committing transaction becomes visible to new snapshots before it releases its locks. The pack numbers each transaction's changes at commit while it holds one advisory lock, so any snapshot sees the drawn numbers as a prefix, apart from numbers an aborted transaction consumed, and no later commit lands below a pull's cursor. [The live SQL horizon](../sync/fencing-and-horizons.md#the-live-sql-horizon) walks through that argument. OrioleDB replaces the heap that argument assumes, and a Multigres failover hands the primary role to a replica. Neither enters the supported database range that [Freeze the remaining public contracts](#freeze-the-remaining-public-contracts) calls for until the [live SQL conformance gate](../operations/ci-cd.md#live-sql-conformance-gate) and the pack's pull-fencing suites (`packages/supabase-pack/tests/pull-fencing-*.test.ts`) pass on an OrioleDB project and across a Multigres failover.
+
 ## Explicitly not promised
 
 The roadmap does not promise a hosted Kizuna data plane, a non-Postgres backend, character-level [CRDT](https://grokipedia.com/page/Conflict-free_replicated_data_type) collaboration, or hard realtime delivery. Supabase [Postgres](https://grokipedia.com/page/PostgreSQL) remains the authority, and missed wakeups must remain recoverable through pull.

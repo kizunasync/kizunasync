@@ -28,7 +28,7 @@ The local apps need these tools:
 
 - [Git](https://git-scm.com/downloads)
 - [Bun](https://bun.sh/docs/installation) `1.4.2` (pinned by the root `packageManager` field)
-- [Docker](https://docs.docker.com/get-started/get-docker/) for the [local Supabase stack](https://supabase.com/docs/guides/local-development#quickstart)
+- [Docker](https://docs.docker.com/get-started/get-docker/) for the [local Supabase stack](https://supabase.com/docs/guides/local-development#quickstart), unless it runs on the stack's [native runtime](../cli/local-supabase.md#1-start-the-stack) on Linux or on macOS on Apple silicon
 - [Rust and Cargo](https://www.rust-lang.org/tools/install) for the native iOS and Android examples
 
 Clone the repository and start the stack:
