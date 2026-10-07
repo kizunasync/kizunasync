@@ -8,7 +8,7 @@
  * distinct and contiguous.
  *
  * While each transaction runs, a sampler reads the backend's private resident
- * memory (RssAnon) from the local stack's container (KSYNC_DB_CONTAINER) and
+ * memory (RssAnon) from the local stack's container (found by resolveDbContainer) and
  * prints the peak. The seed's peak must stay under PEAK_CEILING_KB once the
  * sampler has read MIN_SAMPLES values; with fewer, the run only reports it.
  * The file runs through the pack's `test:scale` script, never the default
@@ -25,11 +25,12 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import { SQL } from 'bun'
 import { commitWithin } from './commit-watchdog'
+import { resolveDbContainer } from './db-container'
 
 const DB_URL =
   process.env.SUPABASE_DB_URL ?? 'postgresql://postgres:postgres@127.0.0.1:55322/postgres'
 
-const CONTAINER = process.env.KSYNC_DB_CONTAINER ?? 'supabase_db_kizunasync'
+const CONTAINER = resolveDbContainer()
 const SEEDED = '_stamp_scale_seed'
 const WRITTEN = '_stamp_scale_write'
 const WARM = '_stamp_scale_warm'
@@ -104,6 +105,10 @@ function sampleMemory(pid: number): { stop: () => Promise<TMemory> } {
   let running = true
   let peakKb: number | null = null
   let samples = 0
+
+  if (CONTAINER === null) {
+    return { stop: async () => ({ peakKb, samples }) }
+  }
   let inFlight: ReturnType<typeof Bun.spawn> | null = null
   const loop = (async () => {
     while (running) {
@@ -188,7 +193,7 @@ describe.skipIf(!reachable)('large transactions hold no per-row trigger event', 
     if (run.samples >= MIN_SAMPLES) {
       expect(run.peakKb ?? Number.POSITIVE_INFINITY).toBeLessThan(PEAK_CEILING_KB)
     } else {
-      console.warn(`[stamp-scale] seed memory not asserted: ${run.samples} samples read from ${CONTAINER}`)
+      console.warn(`[stamp-scale] seed memory not asserted: ${run.samples} samples read from ${CONTAINER ?? 'no database container'}`)
     }
     expect(queued).toBe(String(SEED_ROWS))
     expect(await spanOf(SEEDED, top)).toEqual({ rows: SEED_ROWS, seqs: SEED_ROWS, pks: SEED_ROWS, contiguous: true, aboveTop: true })

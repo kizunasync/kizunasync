@@ -44,7 +44,7 @@ Studio: `http://127.0.0.1:55323`. API: `http://127.0.0.1:55321`. Postgres: `127.
 
 Package tests cover SQL text audits and, when the configured local Postgres instance is reachable, live RPC/security behavior. A green run with the database absent contains skips and is not evidence that the live SQL suite ran.
 
-`bun run --filter @kizunasync/supabase-pack scratch:rebuild` builds the disposable `kizunasync_scratch` database from nothing, applying the vendor stub and then every migration in name order, which is where pack SQL under development is verified before it reaches a stack.
+`bun run --filter @kizunasync/supabase-pack scratch:rebuild` builds the disposable `kizunasync_scratch` database from nothing, applying the vendor stub and then every migration in name order, which is where pack SQL under development is verified before it reaches a stack. It runs `psql` from your `PATH`, or else inside the local database container, which it finds the same way the [pack tests find it](../../docs/cli/local-supabase.md#6-verify-the-schema).
 
 ## Related
 

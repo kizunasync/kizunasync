@@ -70,7 +70,7 @@ The `quality` job installs the Rust toolchain through the shared wasm action, as
 
 ## Live Supabase database job
 
-The `db-tests` job starts the repository's Supabase stack rather than a bare [Postgres](https://grokipedia.com/page/PostgreSQL) service. The tests need Supabase Auth, Realtime, and Storage configuration. They also need the applied migrations and the API-exposed `kizunasync` schema that [SQL pack](../reference/sql-pack.md) documents. Supabase documents the stack itself in [Local development](https://supabase.com/docs/guides/local-development#quickstart). Kizuna adds one installable migration and generated per-project table configuration on top of it. [Local Supabase](../cli/local-supabase.md#2-apply-pending-local-migrations) is the same sequence run by hand.
+The `db-tests` job starts the repository's Supabase stack rather than a bare [Postgres](https://grokipedia.com/page/PostgreSQL) service. The tests need Supabase Auth, Realtime, and Storage configuration. They also need the applied migrations and the API-exposed `kizunasync` schema that [SQL pack](../reference/sql-pack.md) documents. Supabase documents the stack itself in [Local development](https://supabase.com/docs/guides/local-development#quickstart). Kizuna adds one installable migration and generated per-project table configuration on top of it. [Local Supabase](../cli/local-supabase.md#2-apply-pending-local-migrations) is the same sequence run by hand. The pack's `config.toml` turns the [stack commands](../cli/local-supabase.md#1-start-the-stack) on for local runs, and the job sets `SUPABASE_EXPERIMENTAL_STACK` to `0`, so it runs the classic local stack.
 
 The job:
 

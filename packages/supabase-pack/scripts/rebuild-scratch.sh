@@ -26,16 +26,36 @@ url_for() {
 # local stack's own container when it does not. The container path ignores the
 # host and port of SUPABASE_DB_URL, because inside the container the server is
 # the local socket; it exists so a machine with no libpq can still rebuild the
-# local scratch database.
-CONTAINER="${KSYNC_DB_CONTAINER:-supabase_db_kizunasync}"
+# local scratch database. The container is KSYNC_DB_CONTAINER when set, else the
+# classic stack's supabase_db_kizunasync when docker finds it, else the single
+# running container labelled com.supabase.service=database (the experimental
+# stack names it per instance).
+resolve_container() {
+  if [[ -n "${KSYNC_DB_CONTAINER:-}" ]]; then
+    printf '%s' "$KSYNC_DB_CONTAINER"
+  elif docker inspect supabase_db_kizunasync >/dev/null 2>&1; then
+    printf '%s' supabase_db_kizunasync
+  else
+    local names
+    names="$(docker ps --filter label=com.supabase.service=database --format '{{.Names}}' 2>/dev/null || true)"
+    if [[ -n "$names" && "$names" != *$'\n'* ]]; then
+      printf '%s' "$names"
+    fi
+  fi
+}
+
+CONTAINER=""
 if command -v psql >/dev/null 2>&1; then
   IN_CONTAINER=0
-elif docker inspect "$CONTAINER" >/dev/null 2>&1; then
-  IN_CONTAINER=1
-  echo "psql is not on PATH: running it inside $CONTAINER." >&2
 else
-  echo "rebuild-scratch needs psql on PATH, or the local stack's container ($CONTAINER) running." >&2
-  exit 1
+  CONTAINER="$(resolve_container)"
+  if [[ -n "$CONTAINER" ]]; then
+    IN_CONTAINER=1
+    echo "psql is not on PATH: running it inside $CONTAINER." >&2
+  else
+    echo "rebuild-scratch needs psql on PATH, or the local stack's database container running." >&2
+    exit 1
+  fi
 fi
 
 run_sql() {

@@ -45,7 +45,7 @@ Apps never import from other apps, and packages never import apps or examples, s
 
 ## Local setup
 
-You need [Bun](https://bun.sh/docs/installation) `1.4.2`, the version pinned by the root `packageManager` field. You also need a [Rust toolchain](https://www.rust-lang.org/tools/install) compatible with `rust-version = 1.90`, and [Docker](https://docs.docker.com/get-started/get-docker/) for the local Supabase stack.
+You need [Bun](https://bun.sh/docs/installation) `1.4.2`, the version pinned by the root `packageManager` field. You also need a [Rust toolchain](https://www.rust-lang.org/tools/install) compatible with `rust-version = 1.90`, and [Docker](https://docs.docker.com/get-started/get-docker/) for the local Supabase stack unless it runs on the stack's [native runtime](./docs/cli/local-supabase.md#1-start-the-stack) on Linux or on macOS on Apple silicon.
 
 On Linux, building the Rust `kizunasync` CLI also needs `libdbus-1-dev` and `pkg-config` on `PATH`. On Debian or Ubuntu that is `apt install libdbus-1-dev pkg-config`.
 

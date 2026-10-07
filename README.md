@@ -97,7 +97,7 @@ The docs render at [kizunasync.com/docs](https://kizunasync.com/docs) from the M
 
 ## Develop Kizuna Sync
 
-To work on the engine, the CLI, the docs, or the protocol, clone this monorepo. The tree pins [Bun](https://bun.sh/docs/installation) `1.4.2`. [Docker](https://docs.docker.com/get-started/get-docker/) is needed only for the maintainer's local Supabase stack.
+To work on the engine, the CLI, the docs, or the protocol, clone this monorepo. The tree pins [Bun](https://bun.sh/docs/installation) `1.4.2`. [Docker](https://docs.docker.com/get-started/get-docker/) is needed only for the maintainer's local Supabase stack, and only where that stack does not run on its [native runtime](./docs/cli/local-supabase.md#1-start-the-stack) on Linux or on macOS on Apple silicon.
 
 ```bash
 git clone https://github.com/kizunasync/kizunasync.git
