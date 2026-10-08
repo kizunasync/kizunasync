@@ -1,3 +1,4 @@
+import { ESoftBlockReason, type TSoftBlockReason } from 'kizunasync'
 import { useSyncStatus } from 'kizunasync/react'
 import { Button } from '@/components/button'
 import { Tip } from '@/components/tip'
@@ -12,13 +13,14 @@ import { formatClockTime } from '@kizunasync/utilities'
  * simulated-offline switch moves it. A dot that read the browser's real state
  * would lie about what the engine is doing.
  *
- * `needsReset` replaces the line outright when the server has refused this
- * pane. Showing "online, nothing queued" next to a client that cannot sync
- * would be a lie. Recovery is the pane's own "Wipe & rehydrate" control.
+ * `needsReset` replaces the line outright when sync is blocked. Showing
+ * "online, nothing queued" next to a client that cannot sync would be a lie.
+ * A server refusal is recovered with the pane's own "Wipe & rehydrate"
+ * control; a replaced visitor identity resets on its own (use-demo.ts).
  */
 export function StatusStrip({ client }: { client: IPaneClient }) {
   // MARK: - Variables
-  const { outboxDepth, isSyncing, isOnline, needsReset, health, syncNow } = useSyncStatus()
+  const { outboxDepth, isSyncing, isOnline, needsReset, softBlockReason, health, syncNow } = useSyncStatus()
 
   // MARK: - render
 
@@ -41,7 +43,7 @@ export function StatusStrip({ client }: { client: IPaneClient }) {
         role={needsReset ? 'alert' : undefined}
       >
         {needsReset
-          ? 'Sync is blocked: the server refused this pane. Wipe & rehydrate rebuilds it.'
+          ? blockedText(softBlockReason)
           : statusText({
               isOnline,
               isSyncing,
@@ -60,6 +62,13 @@ export function StatusStrip({ client }: { client: IPaneClient }) {
 }
 
 // MARK: - internal
+
+function blockedText(reason: TSoftBlockReason | null): string {
+  if (reason === ESoftBlockReason.identityChanged) {
+    return 'The visitor session was replaced. This pane is resetting to the new one.'
+  }
+  return 'Sync is blocked: the server refused this pane. Wipe & rehydrate rebuilds it.'
+}
 
 interface IStatusTextParams {
   isOnline: boolean

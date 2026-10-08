@@ -315,9 +315,13 @@ revoke execute on function public.todos_enforce_write_cap() from public, anon, a
 
 -- MARK: - Reaper: a visitor's rows die with the visitor
 --
+-- An anonymous visitor goes once it has been idle for a day: activity is the
+-- latest of its creation, sign-in, token refresh, and sync, so an open tab is
+-- never reaped from under its panes.
+--
 -- SECURITY INVOKER deliberately: `create function` grants execute to PUBLIC, and
 -- a DEFINER version would hand every authenticated caller a button that wipes
--- every day-old anonymous account. The revoke is the second lock: it names the
+-- every day-idle anonymous account. The revoke is the second lock: it names the
 -- API roles too, since a platform's default privileges grant them EXECUTE by name.
 
 create or replace function public.reap_demo_visitors() returns integer
@@ -325,9 +329,32 @@ language plpgsql set search_path to '' as $$
 declare
   v_reaped integer;
 begin
-  with gone as (
-    delete from auth.users
-     where is_anonymous and created_at < now() - interval '24 hours'
+  with last_activity as (
+    select
+      u.id,
+      greatest(
+        u.created_at,
+        coalesce(u.last_sign_in_at, u.created_at),
+        coalesce(r.refreshed_at, u.created_at),
+        coalesce(c.seen_at, u.created_at)
+      ) as active_at
+    from auth.users u
+    left join (
+      select user_id, max(coalesce(updated_at, created_at)) as refreshed_at
+      from auth.refresh_tokens
+      group by user_id
+    ) r on r.user_id = u.id::text
+    left join (
+      select user_id, max(last_seen) as seen_at
+      from kizunasync._clients
+      group by user_id
+    ) c on c.user_id = u.id
+    where u.is_anonymous
+  ), gone as (
+    delete from auth.users u
+     using last_activity a
+     where u.id = a.id
+       and a.active_at < now() - interval '24 hours'
     returning 1
   )
   select count(*) into v_reaped from gone;
@@ -354,7 +381,7 @@ end $$;
 --
 -- todos is unbucketed, so its tombstones are table-scoped: every visitor
 -- receives every other visitor's deletes for the whole retention window. Two
--- days bounds that window. reap_demo_visitors() drops a visitor after a day, so
+-- days bounds that window. reap_demo_visitors() drops a visitor idle for a day, so
 -- nothing a live visitor still needs is reaped, and a client offline longer than
 -- two days rehydrates through CHECKPOINT_EXPIRED instead of missing a delete.
 -- The reap/compact/prune schedules keep the pack defaults.

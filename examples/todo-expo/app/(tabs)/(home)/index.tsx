@@ -12,13 +12,15 @@ import { IS_PUBLIC_DEMO } from '../../../src/lib/public-demo'
 import { useAccountSwitch } from '../../../src/hooks/use-account-switch'
 import { useBoardActions } from '../../../src/hooks/use-board-actions'
 import { useBoardFilter } from '../../../src/hooks/use-board-filter'
+import { useIdentityRecovery } from '../../../src/hooks/use-identity-recovery'
 import { usePendingWrites } from '../../../src/hooks/use-pending-writes'
 import { useTodoComposer } from '../../../src/hooks/use-todo-composer'
 import { useSession, useSettings } from '../../_layout'
 
 /**
  * Normal todo CRUD goes through the kizunasync wrapper; the board's own state is
- * split across five hooks: `useAccountSwitch` (identity + the switch guard),
+ * split across six hooks: `useAccountSwitch` (identity + the switch guard),
+ * `useIdentityRecovery` (the reset after a replaced identity),
  * `useBoardFilter` (the ordered query + segment/search), `usePendingWrites`
  * (sync status + the manual sync/reset actions), `useBoardActions` (every
  * write the board issues), and `useTodoComposer` (add + edit). This screen
@@ -47,6 +49,8 @@ export default function TodoScreen() {
     runSync: pendingWrites.runSync,
     onMessage: pendingWrites.setMessage,
   })
+
+  useIdentityRecovery({ ready, client, runSync: pendingWrites.runSync, onMessage: pendingWrites.setMessage })
   const boardFilter = useBoardFilter({ boardOrder, myId: accountSwitch.myId })
   const boardActions = useBoardActions({
     todos: boardFilter.todos,

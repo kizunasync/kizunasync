@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { createCaptchaGate, messageOf } from '@kizunasync/utilities'
+import { EWireEntryKind } from 'kizunasync'
+import { createCaptchaGate, messageOf, resetOnIdentityChange } from '@kizunasync/utilities'
 import { runConflictScenario, runEditAndSoftDeleteScenario, type IRunConflictParams } from '@/lib/conflict'
 import { stageForeignRow } from '@/lib/rls-probe'
 import { followPaneSession, signInPane } from '@/lib/session'
@@ -45,12 +46,37 @@ const openDemoOnce = async (): Promise<IDemo> => {
   const paneA = openPaneKizunaSync('A', wireLog)
   const paneB = openPaneKizunaSync('B', wireLog)
 
+  // Before sign-in: when the visitor was reaped, the new user's first token latches identity_changed.
+  resetPaneOnIdentityChange(paneA, wireLog)
+  resetPaneOnIdentityChange(paneB, wireLog)
   await signInPane(paneA, TURNSTILE_SITE_KEY === '' ? {} : { captchaToken: () => captchaGate.request() })
   await followPaneSession({ owner: paneA, follower: paneB, wireLog })
   await stageForeignRow(wireLog)
   await Promise.all([paneA.sync(), paneB.sync()])
 
   return { paneA, paneB, wireLog }
+}
+
+/** The replaced visitor's queued writes belong to a deleted user and can never be pushed, so the pane drops them. */
+function resetPaneOnIdentityChange(pane: IPaneClient, wireLog: IWireLog): () => void {
+  return resetOnIdentityChange({
+    client: pane,
+    reset: () => pane.resetLocal(),
+    sync: () => pane.sync(),
+    keepQueuedWrites: false,
+    onRecovered: () => {
+      wireLog.record(pane.pane, {
+        kind: EWireEntryKind.note,
+        text: `pane ${pane.pane}: the visitor session was replaced, so the pane reset to the new one`,
+      })
+    },
+    onFailed: (cause) => {
+      wireLog.record(pane.pane, {
+        kind: EWireEntryKind.note,
+        text: `pane ${pane.pane} could not reset to the new visitor session (${messageOf(cause)})`,
+      })
+    },
+  })
 }
 
 /**

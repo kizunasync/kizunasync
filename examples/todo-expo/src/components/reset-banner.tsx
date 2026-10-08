@@ -1,30 +1,39 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { ESoftBlockReason, type TSoftBlockReason } from 'kizunasync'
 import { SPACING } from '@kizunasync/ui'
 import { EThemeColor } from '../theme'
 
 // MARK: - Reset banner
 
 /**
- * `needsReset` is `checkpoint.softBlocked`: the server refused this client, and
- * nothing syncs again until `reset()` rehydrates it. That is the only engine
- * state an app cannot recover from on its own, so it gets a banner with the
- * action rather than a line in the status text. A queued write is lost with the
- * local database, which is why the copy says so before the button does it.
+ * `needsReset` is `checkpoint.softBlocked`: nothing syncs again until `reset()`
+ * rehydrates the local database. The server refused this client, or the local
+ * data belongs to another user than the signed-in one (`identity_changed`,
+ * which the board resets on its own while nothing is queued). A queued write
+ * is lost with the local database, which is why the copy says so before the
+ * button does it.
  */
 export function ResetBanner({
+  softBlockReason,
   outboxDepth,
   isResetting,
   onReset,
 }: {
+  softBlockReason: TSoftBlockReason | null
   outboxDepth: number
   isResetting: boolean
   onReset: () => void
 }) {
+  const blockedText =
+    softBlockReason === ESoftBlockReason.identityChanged
+      ? "This device's local data belongs to another user than the one signed in, so nothing syncs until it is rebuilt."
+      : 'The server refused this client, so nothing syncs until the local database is rebuilt.'
+
   return (
     <View accessibilityRole="alert" style={styles.banner}>
       <Text style={styles.title}>Sync is blocked</Text>
       <Text style={styles.body}>
-        {`The server refused this client, so nothing syncs until the local database is rebuilt.${
+        {`${blockedText}${
           outboxDepth > 0
             ? ` ${outboxDepth} unsynced ${outboxDepth === 1 ? 'write' : 'writes'} will be lost.`
             : ''

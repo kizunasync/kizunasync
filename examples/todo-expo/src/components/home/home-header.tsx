@@ -50,6 +50,7 @@ export function HomeHeader({
     <View style={sharedStyles.column}>
       {pendingWrites.syncStatus.needsReset ? (
         <ResetBanner
+          softBlockReason={pendingWrites.syncStatus.softBlockReason}
           outboxDepth={pendingWrites.pendingWrites}
           isResetting={pendingWrites.isResetting}
           onReset={() => void pendingWrites.rebuildLocalDatabase()}

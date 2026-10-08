@@ -36,6 +36,9 @@ final class TodoStore: ObservableObject {
   }
   @Published var error: String?
   @Published var needsReset = false
+  /// Why sync is blocked, from the checkpoint: `identity_changed` when the local
+  /// data belongs to another user than the token's, otherwise a server refusal.
+  @Published var softBlockReason: String?
   @Published var rejections: [KizunaSyncRejection] = []
   @Published var overwrites: [KizunaSyncOverwrite] = []
   /// Off stops the automatic sync loop; on starts it again, which syncs once right away.
@@ -135,7 +138,9 @@ final class TodoStore: ObservableObject {
     }
     rejections = try await client.rejections()
     overwrites = try await client.overwrites()
-    needsReset = try await client.checkpoint().softBlocked
+    let checkpoint = try await client.checkpoint()
+    needsReset = checkpoint.softBlocked
+    softBlockReason = checkpoint.softBlockReason
   }
 
   /// The way out of a soft block: drop the local database and rehydrate from the
@@ -147,6 +152,7 @@ final class TodoStore: ObservableObject {
     do {
       _ = try await client.reset()
       needsReset = false
+      softBlockReason = nil
       try await refresh()
       try await client.sync()
       try await refresh()
@@ -199,6 +205,11 @@ final class TodoStore: ObservableObject {
         if let lastError = health.lastError {
           self?.error = lastError.message
         }
+        if health.needsReset {
+          self?.softBlockReason = try? await client.checkpoint().softBlockReason
+        } else {
+          self?.softBlockReason = nil
+        }
         self?.needsReset = health.needsReset
       }
     }
@@ -237,7 +248,11 @@ struct CacheView: View {
       }
       if store.needsReset {
         Section("Sync blocked") {
-          Text("The server refused this client, so sync is blocked until reset() runs.")
+          Text(
+            store.softBlockReason == "identity_changed"
+              ? "The local data belongs to another user than the one signed in, so sync is blocked until reset() runs."
+              : "The server refused this client, so sync is blocked until reset() runs."
+          )
           Button("Reset local database") { Task { await store.resetLocal() } }
         }
       }

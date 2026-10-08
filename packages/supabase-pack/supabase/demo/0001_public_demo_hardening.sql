@@ -9,8 +9,8 @@
 --
 -- What 0002_example.sql leaves open on a project the whole internet can
 -- reach: the shared password is public, the storage bucket accepts uploads
--- from any visitor, and a visitor's own account never expires faster than a
--- day. This file closes those, and schedules the pack's own retention jobs
+-- from any visitor, and a visitor's own account lasts until it has been idle
+-- for a day. This file closes those, and schedules the pack's own retention jobs
 -- where pg_cron is available. It narrows no visibility: the shared board is the
 -- public demo's point, so 0002_example.sql's todos policies are the ones the
 -- public project runs.
@@ -124,23 +124,48 @@ end $$;
 
 -- MARK: - Reaper: shorter visitor lifetime
 --
--- 0002_example.sql reaps anonymous visitors after a day; on a public demo a visitor with
--- no todos is reaped after an hour, and every visitor is reaped after six
--- hours regardless. The cascade FK from 0002_example.sql still takes their todos with them.
+-- 0002_example.sql reaps an anonymous visitor idle for a day; on a public demo a
+-- visitor with no todos is reaped after an idle hour, and every visitor after six
+-- idle hours. Activity is the latest of creation, sign-in, token refresh, and sync:
+-- an open tab keeps refreshing and syncing, and reaping it mid-visit strands both
+-- panes on a deleted user. The cascade FK from 0002_example.sql still takes their
+-- todos with them.
 
 create or replace function public.reap_demo_visitors() returns integer
 language plpgsql set search_path = '' as $$
 declare
   v_reaped integer;
 begin
-  with gone as (
-    delete from auth.users
-     where is_anonymous
+  with last_activity as (
+    select
+      u.id,
+      greatest(
+        u.created_at,
+        coalesce(u.last_sign_in_at, u.created_at),
+        coalesce(r.refreshed_at, u.created_at),
+        coalesce(c.seen_at, u.created_at)
+      ) as active_at
+    from auth.users u
+    left join (
+      select user_id, max(coalesce(updated_at, created_at)) as refreshed_at
+      from auth.refresh_tokens
+      group by user_id
+    ) r on r.user_id = u.id::text
+    left join (
+      select user_id, max(last_seen) as seen_at
+      from kizunasync._clients
+      group by user_id
+    ) c on c.user_id = u.id
+    where u.is_anonymous
+  ), gone as (
+    delete from auth.users u
+     using last_activity a
+     where u.id = a.id
        and (
-         created_at < now() - interval '6 hours'
+         a.active_at < now() - interval '6 hours'
          or (
-           created_at < now() - interval '1 hour'
-           and not exists (select 1 from public.todos t where t.user_id = auth.users.id)
+           a.active_at < now() - interval '1 hour'
+           and not exists (select 1 from public.todos t where t.user_id = u.id)
          )
        )
     returning 1
@@ -164,4 +189,4 @@ begin
 end $$;
 
 comment on function public.reap_demo_visitors() is
-  'Demo reaper (public project): deletes an anonymous visitor with no todos after 1 hour, and any anonymous visitor after 6 hours regardless.';
+  'Demo reaper (public project): deletes an anonymous visitor idle for 1 hour with no todos, and any anonymous visitor idle for 6 hours. Activity is the latest of created_at, last_sign_in_at, a refresh token, and a kizunasync._clients last_seen.';

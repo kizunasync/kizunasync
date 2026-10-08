@@ -53,7 +53,8 @@ $$;
 
 -- The columns the example migrations write and read, and no others: the demo
 -- seed inserts users and identities directly, `0002_example.sql` cascades `public.todos`
--- off `auth.users (id)` and reaps on `is_anonymous`.
+-- off `auth.users (id)` and reaps an `is_anonymous` user by its last sign-in,
+-- token refresh, and sync.
 create table if not exists auth.users (
   instance_id uuid,
   id uuid primary key,
@@ -70,6 +71,7 @@ create table if not exists auth.users (
   raw_user_meta_data jsonb,
   created_at timestamptz,
   updated_at timestamptz,
+  last_sign_in_at timestamptz,
   is_sso_user boolean not null default false,
   is_anonymous boolean not null default false
 );
@@ -84,6 +86,14 @@ create table if not exists auth.identities (
   created_at timestamptz,
   updated_at timestamptz,
   unique (provider_id, provider)
+);
+
+create table if not exists auth.refresh_tokens (
+  id bigserial primary key,
+  user_id varchar(255),
+  revoked boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create schema if not exists storage;
