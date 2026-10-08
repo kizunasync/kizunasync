@@ -9,17 +9,17 @@
  * `settings`); the board reads them.
  *
  * State concerns split into the composables under ../composables/: account
- * identity and the switch/recover flow, the read/write test actions, the
- * add-todo composer, the live outbox depth, and the sort/filter list. What
- * stays here: the query/sync-status wiring, the shared `mutate` write
- * wrapper (every composable that writes takes it as a parameter, since
- * `writeError` feeds the `error`/`note` computed below), the edit modal's
- * local state, and the per-row toggle/delete handlers the template calls
- * directly.
+ * identity and the switch/recover flow, the reset after a replaced identity,
+ * the read/write test actions, the add-todo composer, the live outbox depth,
+ * and the sort/filter list. What stays here: the query/sync-status wiring,
+ * the shared `mutate` write wrapper (every composable that writes takes it as
+ * a parameter, since `writeError` feeds the `error`/`note` computed below),
+ * the edit modal's local state, and the per-row toggle/delete handlers the
+ * template calls directly.
  */
 
 import { computed, ref } from 'vue'
-import type { TColumnValues } from 'kizunasync'
+import { ESoftBlockReason, type TColumnValues } from 'kizunasync'
 import { useQuery, useSyncStatus } from 'kizunasync/vue'
 import { t } from '../i18n'
 import { createUiConnectivity, previewUrlForFile, type IKizunaSyncShim } from '../kizunasync'
@@ -33,6 +33,7 @@ import RowIcon from './RowIcon.vue'
 import { ACCOUNTS, useAccountSwitch, type IAccount } from '../composables/use-account-switch'
 import { useBoardActions } from '../composables/use-board-actions'
 import { useBoardFilter } from '../composables/use-board-filter'
+import { useIdentityRecovery } from '../composables/use-identity-recovery'
 import { usePendingWrites } from '../composables/use-pending-writes'
 import { useTodoComposer } from '../composables/use-todo-composer'
 import { FILTER_OPTIONS, type ITodo, type TMutate } from '../composables/types'
@@ -48,7 +49,7 @@ const { data, error: queryError, isLoading } = useQuery(
   { client: props.client },
 )
 
-const { outboxDepth, isSyncing, isOnline, lastError, needsReset, health, syncNow } = useSyncStatus({
+const { outboxDepth, isSyncing, isOnline, lastError, needsReset, softBlockReason, health, syncNow } = useSyncStatus({
   client: props.client,
   connectivity: createUiConnectivity(),
 })
@@ -118,12 +119,26 @@ const { title, addImageUri, addFileInput, submit, pickAddImage, onAddImagePicked
   mutate,
 })
 
+useIdentityRecovery({
+  client: props.client,
+  syncNow,
+  onMessage: (next) => {
+    message.value = next
+  },
+})
+
 const queueDepth = usePendingWrites(props.client, outboxDepth)
 
 // MARK: - Sync bar live state
 
 const lastSyncLabel = computed(() =>
   health.value.lastSuccessAt === null ? 'Not synced yet' : `Last sync ${formatClockTime(health.value.lastSuccessAt)}`,
+)
+
+const resetBannerBody = computed(() =>
+  softBlockReason.value === ESoftBlockReason.identityChanged
+    ? "This device's local data belongs to another user than the one signed in, so nothing syncs until it is rebuilt."
+    : 'The server refused this client, so nothing syncs until the local database is rebuilt.',
 )
 
 const error = computed(() => queryError.value ?? writeError.value ?? lastError.value)
@@ -253,7 +268,7 @@ function pillClass(candidate: IAccount): string {
     <div v-if="needsReset" class="reset-banner" role="alert">
       <p class="reset-banner-title">Sync is blocked</p>
       <p class="reset-banner-body">
-        The server refused this client, so nothing syncs until the local database is rebuilt.
+        {{ resetBannerBody }}
         <template v-if="queueDepth > 0">
           {{ queueDepth }} unsynced {{ queueDepth === 1 ? 'write' : 'writes' }} will be lost.
         </template>

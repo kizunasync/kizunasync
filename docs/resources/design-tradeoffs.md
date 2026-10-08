@@ -14,7 +14,7 @@ Kizuna favors a small server-authoritative protocol over peer-to-peer merge mach
 
 The default conflict rule is [column-level last-writer-wins](./glossary.md#column-last-writer-wins-column-lww) at a single Postgres arbiter. Updates that name different columns can all survive, and two accepted writes to the same column end with one value. Application rows stay ordinary Postgres rows, so the [policies](https://supabase.com/docs/guides/database/postgres/row-level-security#what-a-policy-does) and constraints you already wrote decide whether a write may commit, exactly as Supabase documents them for any table.
 
-The cost is that Kizuna does not preserve every concurrent edit. Rich text, ordered sequences, and shared canvases need an operation-aware data type inside the field itself, and row sync does not supply one. [Collaborative fields](../sync/collaborative-fields.md) covers the counters, sets, and insert-only child tables that fit inside this model, and [Conflict resolution](../sync/conflict-resolution.md#model-boundary) states the boundary.
+The cost is that Kizuna does not preserve every concurrent edit. Rich text, ordered sequences, and shared canvases need an operation-aware data type inside the field itself, and row sync does not supply one. [Collaborative fields](../sync/collaborative-fields.md) covers the counters, sets, and insert-only child tables that fit inside this model, and [Conflict resolution](../sync/conflict-resolution.md#model-boundary) states the boundary. [Comparison with alternatives](./comparison-with-alternatives.md) sets this choice next to the sync libraries that merge on the client.
 
 ## Server arrival instead of device time
 

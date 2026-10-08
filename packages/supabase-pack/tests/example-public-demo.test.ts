@@ -14,10 +14,12 @@
  *       demo database carries is dropped too, so the pack's owner-only
  *       policies are the only ones on the table.
  *   Accounts: samuel/david are gone; mary has no usable password.
- *   Reaper: it drops an anonymous visitor with no todos after 1 hour, and any
- *       anonymous visitor after 6 hours regardless; a write as a visitor still
- *       trips the write-cap trigger with its EXECUTE revoked (Helper reach),
- *       since Postgres checks EXECUTE at trigger creation, not trigger time.
+ *   Reaper: it drops an anonymous visitor idle for 1 hour with no todos, and
+ *       any anonymous visitor idle for 6 hours. Activity is the latest of the
+ *       account's creation, sign-in, token refresh, and sync, so an open tab
+ *       keeps its visitor. A write as a visitor still trips the write-cap
+ *       trigger with its EXECUTE revoked (Helper reach), since Postgres checks
+ *       EXECUTE at trigger creation, not trigger time.
  *   Helper reach: EXECUTE on both cap trigger functions and on the reaper is
  *       revoked from anon and authenticated. The anonymity probe stays
  *       executable by `authenticated` alone: the shared-board UPDATE and DELETE
@@ -93,6 +95,15 @@ interface IPublicDemoTxn {
   /** A fresh REGISTERED (non-mary) auth.users row. */
   mintRegistered: () => Promise<string>
 
+  /** Set the visitor's last_sign_in_at to `ago` (an interval literal, e.g. '10 minutes') before now. */
+  stampSignIn: (visitorId: string, ago: string) => Promise<void>
+
+  /** Give the visitor a refresh token rotated `ago` before now, as a token refresh would. */
+  stampRefresh: (visitorId: string, ago: string) => Promise<void>
+
+  /** Give the visitor a kizunasync._clients row last seen `ago` before now, as a sync would. */
+  stampClientSeen: (visitorId: string, ago: string) => Promise<void>
+
   /** mary's seeded row, inserted only if 0002's seed did not land locally. */
   ensureMary: () => Promise<void>
 
@@ -146,6 +157,19 @@ async function inTxn<T>(conn: SQL, fn: (ctx: IPublicDemoTxn) => Promise<T>): Pro
         tx: tx as unknown as SQL,
         mintVisitor: (age) => mint(true, age),
         mintRegistered: () => mint(false),
+        stampSignIn: async (visitorId, ago) => {
+          await tx`update auth.users set last_sign_in_at = now() - ${ago}::interval where id = ${visitorId}::uuid`
+        },
+        stampRefresh: async (visitorId, ago) => {
+          await tx`
+            insert into auth.refresh_tokens (user_id, revoked, created_at, updated_at)
+            values (${visitorId}, false, now() - ${ago}::interval, now() - ${ago}::interval)`
+        },
+        stampClientSeen: async (visitorId, ago) => {
+          await tx`
+            insert into kizunasync._clients (client_id, user_id, last_seen)
+            values (gen_random_uuid(), ${visitorId}::uuid, now() - ${ago}::interval)`
+        },
         ensureMary: async () => {
           await tx`
             insert into auth.users (id, is_anonymous)
@@ -361,15 +385,15 @@ describe.skipIf(!reachable)('demo fixture: public-demo hardening', () => {
 
   // MARK: - Reaper
 
-  test('reap_demo_visitors drops a todo-less visitor after 1h and every visitor after 6h, and the write-cap trigger still fires for authenticated', async () => {
+  test('reap_demo_visitors drops a todo-less visitor idle for 1h and every visitor idle for 6h, and the write-cap trigger still fires for authenticated', async () => {
     const state = await inTxn(db!, async (ctx) => {
-      const staleEmpty = await ctx.mintVisitor('2 hours')
-      const staleWithTodo = await ctx.mintVisitor('2 hours')
+      const idleEmpty = await ctx.mintVisitor('2 hours')
+      const idleWithTodo = await ctx.mintVisitor('2 hours')
 
-      await ctx.seedTodo(staleWithTodo, 'keeps its owner alive')
-      const ancient = await ctx.mintVisitor('7 hours')
+      await ctx.seedTodo(idleWithTodo, 'keeps its owner alive')
+      const idleAncient = await ctx.mintVisitor('7 hours')
 
-      await ctx.seedTodo(ancient, 'too old regardless')
+      await ctx.seedTodo(idleAncient, 'idle too long regardless')
 
       const freshVisitor = await ctx.mintVisitor()
 
@@ -380,22 +404,86 @@ describe.skipIf(!reachable)('demo fixture: public-demo hardening', () => {
       await ctx.tx`select public.reap_demo_visitors()`
       const [remaining] = await ctx.tx`
         select
-          count(*) filter (where id = ${staleEmpty}::uuid)::int as stale_empty,
-          count(*) filter (where id = ${staleWithTodo}::uuid)::int as stale_with_todo,
-          count(*) filter (where id = ${ancient}::uuid)::int as ancient
+          count(*) filter (where id = ${idleEmpty}::uuid)::int as idle_empty,
+          count(*) filter (where id = ${idleWithTodo}::uuid)::int as idle_with_todo,
+          count(*) filter (where id = ${idleAncient}::uuid)::int as idle_ancient
         from auth.users`
       const [counter] = await ctx.tx`
         select count(*)::int as n from public.demo_write_counters where user_id = ${freshVisitor}::uuid`
 
       return {
-        staleEmpty: remaining.stale_empty as number,
-        staleWithTodo: remaining.stale_with_todo as number,
-        ancient: remaining.ancient as number,
+        idleEmpty: remaining.idle_empty as number,
+        idleWithTodo: remaining.idle_with_todo as number,
+        idleAncient: remaining.idle_ancient as number,
         writeCapFired: counter.n as number,
       }
     })
 
-    expect(state).toEqual({ staleEmpty: 0, staleWithTodo: 1, ancient: 0, writeCapFired: 1 })
+    expect(state).toEqual({ idleEmpty: 0, idleWithTodo: 1, idleAncient: 0, writeCapFired: 1 })
+  })
+
+  test('reap_demo_visitors keeps a visitor whose tab is still open, whatever its age', async () => {
+    const survivors = await inTxn(db!, async (ctx) => {
+      const refreshedEmpty = await ctx.mintVisitor('2 hours')
+
+      await ctx.stampRefresh(refreshedEmpty, '10 minutes')
+      const syncedEmpty = await ctx.mintVisitor('2 hours')
+
+      await ctx.stampClientSeen(syncedEmpty, '10 minutes')
+      const signedInEmpty = await ctx.mintVisitor('2 hours')
+
+      await ctx.stampSignIn(signedInEmpty, '10 minutes')
+      const activeAncient = await ctx.mintVisitor('7 hours')
+
+      await ctx.seedTodo(activeAncient, 'its owner is still here')
+      await ctx.stampRefresh(activeAncient, '10 minutes')
+      const syncedAncient = await ctx.mintVisitor('7 hours')
+
+      await ctx.stampClientSeen(syncedAncient, '10 minutes')
+
+      await ctx.tx`select public.reap_demo_visitors()`
+      const [remaining] = await ctx.tx`
+        select
+          count(*) filter (where id = ${refreshedEmpty}::uuid)::int as refreshed_empty,
+          count(*) filter (where id = ${syncedEmpty}::uuid)::int as synced_empty,
+          count(*) filter (where id = ${signedInEmpty}::uuid)::int as signed_in_empty,
+          count(*) filter (where id = ${activeAncient}::uuid)::int as active_ancient,
+          count(*) filter (where id = ${syncedAncient}::uuid)::int as synced_ancient
+        from auth.users`
+
+      return remaining
+    })
+
+    expect(survivors).toEqual({
+      refreshed_empty: 1,
+      synced_empty: 1,
+      signed_in_empty: 1,
+      active_ancient: 1,
+      synced_ancient: 1,
+    })
+  })
+
+  test('reap_demo_visitors drops a visitor whose last refresh and sync are older than the idle limits', async () => {
+    const remaining = await inTxn(db!, async (ctx) => {
+      const staleEmpty = await ctx.mintVisitor('3 hours')
+
+      await ctx.stampRefresh(staleEmpty, '2 hours')
+      await ctx.stampClientSeen(staleEmpty, '2 hours')
+      const staleWithTodo = await ctx.mintVisitor('9 hours')
+
+      await ctx.seedTodo(staleWithTodo, 'idle for seven hours')
+      await ctx.stampRefresh(staleWithTodo, '7 hours')
+      await ctx.stampClientSeen(staleWithTodo, '7 hours')
+
+      await ctx.tx`select public.reap_demo_visitors()`
+      const [row] = await ctx.tx`
+        select count(*)::int as n from auth.users
+        where id in (${staleEmpty}::uuid, ${staleWithTodo}::uuid)`
+
+      return row.n as number
+    })
+
+    expect(remaining).toBe(0)
   })
 
   // MARK: - Helper reach

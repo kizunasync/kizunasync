@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkDirective from 'remark-directive'
@@ -9,6 +10,21 @@ import { FrameworkTabs } from '@/components/framework-tabs'
 import { CopyCodeButton } from '@/components/copy-code-button'
 import { remarkTabs, type ITabPanel } from '@/lib/remark-tabs'
 import { CODE_THEME, getHighlighter, resolveLang } from '@/lib/code-highlight'
+import { SITE_URL } from '@/lib/site'
+
+// MARK: - Site links
+
+const SITE_ORIGIN = new URL(SITE_URL).origin
+
+/** Docs link the site by absolute URL so the link also works on GitHub; on the site itself it stays an in-site path. */
+function resolveSitePath(href: string): string | null {
+  if (!/^https?:/.test(href) || !URL.canParse(href)) {
+    return null
+  }
+  const url = new URL(href)
+
+  return url.origin === SITE_ORIGIN ? `${url.pathname}${url.search}${url.hash}` : null
+}
 
 // MARK: - Heading anchors
 
@@ -44,17 +60,22 @@ type TPreChild = { props?: { className?: string; children?: unknown } }
 export async function DocMarkdown({
   content,
   sourceFile,
+  variant,
 }: {
   content: string
   sourceFile?: string
+
+  /** `card` restyles headings and lists for a card on a marketing page and drops heading ids, which would repeat across cards. */
+  variant?: 'card'
 }) {
   const highlighter = await getHighlighter()
+  const isCard = variant === 'card'
 
   return (
-    <div className="docs-prose">
+    <div className={isCard ? 'docs-prose docs-prose-card' : 'docs-prose'}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkDirective, remarkTabs]}
-        rehypePlugins={[rehypeSlug, [rehypeAutolinkHeadings, ANCHOR_OPTIONS]]}
+        rehypePlugins={isCard ? [] : [rehypeSlug, [rehypeAutolinkHeadings, ANCHOR_OPTIONS]]}
         components={
           {
             // A `:::tabs` block becomes <frameworktabs panels="…json…" groupId="…">; highlight each panel server-side, then hand the labeled HTML to the client tab switcher (custom element key isn't in react-markdown's typed Components, hence the cast). `groupId` namespaces persistence so, say, framework tabs and package-manager tabs never cross-sync.
@@ -92,8 +113,17 @@ export async function DocMarkdown({
               </div>
             )
           },
-          a: ({ href, children, ...props }) => {
+          a: ({ node: _node, href, children, ...props }) => {
             const resolved = resolveDocHref(href ?? '#', sourceFile)
+            const inSite = resolveSitePath(resolved)
+
+            if (inSite !== null) {
+              return (
+                <Link href={inSite} {...props}>
+                  {children}
+                </Link>
+              )
+            }
             const external = resolved.startsWith('http')
 
             return (

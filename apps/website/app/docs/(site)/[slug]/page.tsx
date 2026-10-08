@@ -6,6 +6,8 @@ import { DocEyebrow } from '@/components/doc-eyebrow'
 import { DocPageFooter } from '@/components/doc-page-footer'
 import { DOCS } from '@/lib/docs-registry'
 import { adjacentDocs, getDoc } from '@/lib/docs'
+import { faqJsonLd, jsonLdScript, readFaq } from '@/lib/faq'
+import { pageMetadata } from '@/lib/page-metadata'
 import { GITHUB_URL } from '@/lib/site'
 
 // MARK: - Doc page: breadcrumb, content, scrollspy TOC, prev/next, edit link.
@@ -22,7 +24,9 @@ export async function generateMetadata({
   const { slug } = await params
   const doc = DOCS.find((entry) => entry.slug === slug)
 
-  return doc === undefined ? {} : { title: `${doc.title} · Docs`, description: doc.description }
+  return doc === undefined
+    ? {}
+    : pageMetadata({ title: `${doc.title} · Docs`, description: doc.description, path: `/docs/${slug}`, hasOwnImage: true })
 }
 
 export default async function DocPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -36,6 +40,12 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
 
   return (
     <>
+      {slug === 'faq' && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript({ '@context': 'https://schema.org', ...faqJsonLd(readFaq()) }) }}
+        />
+      )}
       <main id="main-content" className="min-w-0">
         <DocEyebrow
           crumbs={[

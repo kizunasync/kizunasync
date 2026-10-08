@@ -24,13 +24,13 @@ export function HeroSection() {
               Synchronizes <strong className="text-site-text">rows</strong> and <strong className="text-site-text">attachment references</strong>. Buckets select; Postgres grants and RLS authorize.
             </p>
           </Reveal>
-          <Reveal delay={0.24} className="mt-10 flex flex-col items-center gap-4 sm:flex-row">
+          <Reveal delay={0.24} className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:items-end">
             <HeroCommand />
             <a
               href={GITHUB_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-site-accent text-site-accent-foreground hover:bg-site-accent-bright inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold transition-colors"
+              className="bg-site-accent text-site-accent-foreground hover:bg-site-accent-bright inline-flex items-center gap-2 rounded-lg border border-transparent px-5 py-2 text-sm font-semibold transition-colors"
             >
               <span className="nf" aria-hidden="true">
                 {ICONS.github}

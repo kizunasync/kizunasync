@@ -93,8 +93,8 @@ The docs render at [kizunasync.com/docs](https://kizunasync.com/docs) from the M
 | [Attachments](./docs/attachments/media-and-attachments.md) | The attachment column, the file and transfer ports, upload and download, and Storage policies |
 | [CLI & provisioning](./docs/cli/cli.md) | The `kizunasync` commands, install, configuration, what is installed in Supabase, managing synced tables, the local stack, upgrading, and removal |
 | [Testing & operations](./docs/operations/test-offline-behavior.md) | Testing offline behavior, troubleshooting by symptom, and the CI and CD gates |
-| [Reference](./docs/reference/javascript/introduction.md) | The JavaScript, React, Vue, Expo, Swift, and Kotlin client references, plus the SQL pack, the protocol, drivers and the TCK, and the status taxonomy |
-| [Resources](./docs/resources/architecture.md) | Architecture, design trade-offs, protocol decisions, repository layout, native packaging, glossary, roadmap, contributing, and governance |
+| [Reference](./docs/reference/javascript/introduction.md) | The client library comparison and the JavaScript, React, Vue, Expo, Swift, and Kotlin client references, plus the SQL pack, the protocol, drivers and the TCK, and the status taxonomy |
+| [Resources](./docs/resources/architecture.md) | FAQ, comparison with alternatives, architecture, design trade-offs, protocol decisions, repository layout, native packaging, glossary, roadmap, contributing, and governance |
 
 ## Develop Kizuna Sync
 

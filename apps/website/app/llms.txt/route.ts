@@ -65,6 +65,8 @@ for JavaScript, or \`KizunaSyncClient\` for Swift/Kotlin. See the client library
 
 - [Docs (human-first)](${SITE_URL}/docs). Getting started, sync, attachments, CLI, operations, API reference, and resources
 - [Repository layout](${SITE_URL}/docs/repository-layout)
+- [FAQ](${SITE_URL}/docs/faq)
+- [Comparison with alternatives](${SITE_URL}/docs/comparison-with-alternatives)
 
 ## Client library reference
 
@@ -74,6 +76,7 @@ for JavaScript, or \`KizunaSyncClient\` for Swift/Kotlin. See the client library
 - [React](${SITE_URL}/docs/reference/react/introduction)
 - [Vue](${SITE_URL}/docs/reference/vue/introduction)
 - [Expo](${SITE_URL}/docs/reference/expo/introduction)
+- [Client library comparison](${SITE_URL}/docs/client-libraries)
 
 - [Quickstart](${SITE_URL}/docs/quickstart)
 - [Compare](${SITE_URL}/compare). Architecture matrix with dated primary-source links

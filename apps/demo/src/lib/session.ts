@@ -15,7 +15,8 @@ import type { IWireLog } from '@/runtime/wire-log'
  * carry the SAME one: they are two DEVICES of one visitor (two client_ids, two
  * OPFS databases), not two visitors. Anonymous sign-in gives that visitor a
  * throwaway identity with no accounts UI, and `0002_example.sql` makes it
- * temporary: a visitor's rows are reaped with its user within a day.
+ * temporary: a visitor's rows are reaped with its user once it has been idle
+ * for a day.
  *
  * A persisted session is reused. A reload that minted a fresh uid would
  * orphan whatever a pane still has queued in its outbox, and those writes

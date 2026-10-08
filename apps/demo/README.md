@@ -65,7 +65,7 @@ Each pane composes `createSupabaseKizunaSync({ supabase, driver, config, connect
 
 The wire viewer taps traffic at the supabase-js `fetch` layer, not at `IProtocolRemote`. `createSupabaseKizunaSync` builds its remote internally, so wrapping the remote would mean changing `kizunasync/supabase`. The fetch layer sees the same round trips and measures real serialized bytes. Engine events reach the same log through `client.on(…)`.
 
-Pane A signs in anonymously and pane B adopts that identity, because `public.todos` policies target `authenticated`. The two clients represent one visitor on two devices; only pane A refreshes the shared token. When `pg_cron` is available, a demo job removes anonymous accounts older than 24 hours. There is no accounts UI: the sessions are plumbing.
+Pane A signs in anonymously and pane B adopts that identity, because `public.todos` policies target `authenticated`. The two clients represent one visitor on two devices; only pane A refreshes the shared token. When `pg_cron` is available, a demo job removes an anonymous account once it has been idle for 24 hours. There is no accounts UI: the sessions are plumbing.
 
 ## Public deployment
 
@@ -75,7 +75,7 @@ The public project runs the same migrations as the local stack, the base pack `0
 
 The hardening file closes what the local-only fixture leaves open on a server the whole internet can reach. The public project refuses email sign-ups and refuses a sign-in as the seeded owner account, so a visitor can still see mary's row for the RLS-refusal demo without ever writing through it. It refuses file uploads: the storage bucket and its write policies from `0002_example.sql` are dropped. It refuses more than 100 todos or 300 writes per minute from one visitor, the same caps `0002_example.sql` already enforces locally. It refuses an anonymous sign-in that carries no Cloudflare Turnstile token, verified by Supabase Auth before a session is issued.
 
-A visitor's account does not last. The demo reaps an anonymous account with no todos after one hour, and every anonymous account after six hours regardless, taking its rows with it through the same cascade `0002_example.sql` sets up locally.
+A visitor's account lasts only while it is in use. The demo reaps an anonymous account once it has been idle for six hours, or for one hour when it owns no todos, and takes its rows with it through the same cascade `0002_example.sql` sets up locally. The account's latest token refresh or sync counts as activity, so an open tab keeps its visitor. A visitor who returns after the reap gets a new anonymous account, and each pane wipes its local database and resets itself to that account.
 
 The static build runs on Vercel. `.github/workflows/deploy-demo.yml` uploads it as one of `release.yml`'s steps, once a pushed `v*` tag has run `ci` and `rust-ci` with `full: true`. Vercel reads its routing, headers, and Content-Security-Policy from `public/vercel.json`, scoped to this Supabase project and to Cloudflare Turnstile. That policy also admits Google Tag Manager and Google Analytics; visitors in the EEA, the UK, and Switzerland see a consent banner and are tracked only after they accept.
 

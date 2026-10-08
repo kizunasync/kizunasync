@@ -116,7 +116,7 @@ export function TerminalShowcase() {
           <span className="bg-site-gold/70 h-3 w-3 rounded-full" />
           <span className="bg-site-ok/70 h-3 w-3 rounded-full" />
         </span>
- <span className="text-site-faint ml-2 font-mono text-xs">kSync » terminal</span>
+ <span className="text-site-faint ml-2 font-mono text-xs">Kizuna Sync » terminal</span>
         <StatusChip />
         <span className="text-site-faint font-mono text-[10px] tracking-wide uppercase">illustration</span>
         <button

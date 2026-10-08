@@ -290,6 +290,13 @@ export const DOCS: IDocEntry[] = [
 
   // MARK: - Reference
   {
+    slug: 'client-libraries',
+    file: 'docs/reference/client-libraries.md',
+    title: 'Client library comparison',
+    group: 'Reference',
+    description: 'Which capabilities each Kizuna client library supports',
+  },
+  {
     slug: 'query-operators',
     file: 'docs/reference/query-operators.md',
     title: 'Supported query operators',
@@ -326,6 +333,20 @@ export const DOCS: IDocEntry[] = [
   },
 
   // MARK: - Resources
+  {
+    slug: 'faq',
+    file: 'docs/resources/faq.md',
+    title: 'FAQ',
+    group: 'Resources',
+    description: 'Answers about offline periods, supabase-js, files, conflicts, security, platforms, and cost',
+  },
+  {
+    slug: 'comparison-with-alternatives',
+    file: 'docs/resources/comparison-with-alternatives.md',
+    title: 'Comparison with alternatives',
+    group: 'Resources',
+    description: 'How Kizuna compares with PowerSync, Electric, Zero, Firestore, and other sync libraries, and when to choose each',
+  },
   {
     slug: 'architecture-overview',
     file: 'docs/resources/architecture.md',

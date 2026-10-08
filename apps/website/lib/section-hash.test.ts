@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { activeSectionId, hashForSection, HOME_HASH_READ_LINE, stickyReadLine } from './section-hash'
+import { activeSectionId, hashForSection, HOME_HASH_READ_LINE, isSamePageHashLink, stickyReadLine } from './section-hash'
 
 describe('stickyReadLine', () => {
   test('uses the header offset while the journey nav is still down the page', () => {
@@ -58,6 +58,18 @@ describe('activeSectionId', () => {
     ).toBe('cli')
   })
 
+  test('counts a section that landed a fraction of a pixel below the read line as reached', () => {
+    expect(
+      activeSectionId(
+        [
+          { id: 'powersync', top: -900 },
+          { id: 'electric', top: 80.5 },
+        ],
+        80,
+      ),
+    ).toBe('electric')
+  })
+
   test('stays on the last block once the page cannot scroll further', () => {
     expect(
       activeSectionId(
@@ -81,5 +93,38 @@ describe('hashForSection', () => {
     expect(hashForSection('how-it-works')).toBe('#how-it-works')
     expect(hashForSection('features')).toBe('#features')
     expect(hashForSection('faq')).toBe('#faq')
+  })
+
+  test('keeps the URL bare on the section another page names instead of the hero', () => {
+    expect(hashForSection('intro', 'intro')).toBe('')
+    expect(hashForSection('matrix', 'intro')).toBe('#matrix')
+    expect(hashForSection('home', 'intro')).toBe('#home')
+  })
+})
+
+describe('isSamePageHashLink', () => {
+  const page = 'https://kizunasync.com/compare'
+
+  test('matches a fragment-only link on the current page', () => {
+    expect(isSamePageHashLink('#primary-sources', page)).toBe(true)
+  })
+
+  test('matches an absolute or root-relative link to the current path with a fragment', () => {
+    expect(isSamePageHashLink('/compare#electric', `${page}#matrix`)).toBe(true)
+    expect(isSamePageHashLink('https://kizunasync.com/compare#zero', page)).toBe(true)
+  })
+
+  test('ignores a fragment link to another page', () => {
+    expect(isSamePageHashLink('/#faq', page)).toBe(false)
+    expect(isSamePageHashLink('/docs/comparison-with-alternatives#zero', page)).toBe(false)
+  })
+
+  test('ignores another origin that shares the path', () => {
+    expect(isSamePageHashLink('https://example.com/compare#zero', page)).toBe(false)
+  })
+
+  test('ignores a link without a fragment', () => {
+    expect(isSamePageHashLink('/compare', `${page}#matrix`)).toBe(false)
+    expect(isSamePageHashLink('#', page)).toBe(false)
   })
 })

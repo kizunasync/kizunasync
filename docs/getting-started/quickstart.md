@@ -182,4 +182,5 @@ Install the client library for your platform beside Supabase's own client: `kizu
 - [Configuration](../cli/configuration.md): the `kizunasync._config` and `kizunasync._settings` columns the CLI writes.
 - [How Kizuna works](./how-kizuna-works.md): outbox, pull, verdicts, and files in five steps.
 - [Project status](./status.md): what is implemented and what is verified.
+- [FAQ](../resources/faq.md): long offline periods, supabase-js, large files, conflicts, and cost.
 - [Contribute](../resources/contribute.md): the monorepo path for maintaining Kizuna Sync itself.

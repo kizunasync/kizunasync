@@ -21,7 +21,7 @@ export function DemoHeader({ disabled, runningScenario, status, onRunConflict, o
           <h1 className="m-0 text-base font-bold">Kizuna Sync » live demo</h1>
           <p className="mt-1 mb-0 text-sm text-site-muted">
             Two browser databases, one Supabase. Every byte that crosses between them is on this page. Your todos are
-            shared with every other visitor and are deleted within a few hours.
+            shared with every other visitor and are deleted a few hours after you leave.
           </p>
         </div>
         <div className="flex w-full flex-wrap justify-start gap-2 sm:w-auto sm:shrink-0 sm:justify-end">

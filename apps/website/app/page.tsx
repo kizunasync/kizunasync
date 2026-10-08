@@ -1,6 +1,7 @@
+import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
-import { HomeHashSpy } from '@/components/home-hash-spy'
+import { SectionHashSpy } from '@/components/section-hash-spy'
 import { HeroSection } from '@/components/home/hero-section'
 import { AtAGlanceSection } from '@/components/home/at-a-glance-section'
 import { JourneySection } from '@/components/home/journey-section'
@@ -9,8 +10,16 @@ import { KeyNumbersSection } from '@/components/home/key-numbers-section'
 import { WhySection } from '@/components/home/why-section'
 import { HonestySection } from '@/components/home/honesty-section'
 import { FaqSection } from '@/components/home/faq-section'
-import { FAQ } from '@/components/home/faq.data'
-import { GITHUB_URL, SITE_FULL_NAME, SITE_MODIFIED, SITE_PUBLISHED, SITE_URL } from '@/lib/site'
+import { jsonLdScript } from '@/lib/faq'
+import { pageMetadata } from '@/lib/page-metadata'
+import { DESCRIPTION, GITHUB_URL, SITE_FULL_NAME, SITE_MODIFIED, SITE_PUBLISHED, SITE_URL, TAGLINE } from '@/lib/site'
+
+export const metadata: Metadata = pageMetadata({
+  title: `${SITE_FULL_NAME} · ${TAGLINE}`,
+  description: DESCRIPTION,
+  path: '/',
+  hasOwnImage: true,
+})
 
 // MARK: - Landing page
 
@@ -19,7 +28,7 @@ export default function HomePage() {
     <>
       <JsonLd />
       <SiteHeader />
-      <HomeHashSpy />
+      <SectionHashSpy />
       <main id="main-content">
         <HeroSection />
         <AtAGlanceSection />
@@ -68,18 +77,10 @@ function JsonLd() {
         dateModified: SITE_MODIFIED,
         publisher: { '@id': `${SITE_URL}/#org` },
       },
-      {
-        '@type': 'FAQPage',
-        mainEntity: FAQ.map((entry) => ({
-          '@type': 'Question',
-          name: entry.question,
-          acceptedAnswer: { '@type': 'Answer', text: entry.answer },
-        })),
-      },
     ],
   }
 
   return (
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(graph) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(graph) }} />
   )
 }

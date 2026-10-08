@@ -17,6 +17,7 @@
   --color-site-accent-foreground: oklch(0.98 0.008 29);
 
   --color-site-gold: oklch(0.82 0.12 85);
+  --color-site-partial: oklch(0.74 0.16 58);
   --color-site-ok: oklch(0.78 0.17 150);
   --color-site-danger: oklch(0.64 0.22 18);
 

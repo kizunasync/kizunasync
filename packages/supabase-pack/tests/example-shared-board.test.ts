@@ -15,6 +15,8 @@
  *       executes only the two policy helpers, and no API role runs the reaper,
  *       even where the platform grants EXECUTE on new functions. The reaper
  *       runs with an empty search_path.
+ *   Reaper: an anonymous visitor idle for 24 hours is dropped; one whose
+ *       token refreshed within the day stays, however old its account.
  *   Title length: a title holds at most 50 code points. The 51st raises
  *       SQLSTATE 23514, push answers it with a CONSTRAINT rejection, and the
  *       fixture's title-length section adds the check to a todos table that
@@ -141,8 +143,8 @@ class Rollback extends Error {}
 interface IVisitorTxn {
   tx: SQL
 
-  /** A fresh anonymous auth.users row: one demo visitor. */
-  mintVisitor: () => Promise<string>
+  /** A fresh anonymous auth.users row: one demo visitor, backdated by an interval literal (e.g. '30 hours') for the reaper case. */
+  mintVisitor: (age?: string) => Promise<string>
 
   /** A fresh REGISTERED auth.users row: a mary-shaped owner. */
   mintRegistered: () => Promise<string>
@@ -158,6 +160,9 @@ interface IVisitorTxn {
 
   /** Seed a todo bypassing RLS, as another actor's committed write would be. */
   seedTodo: (ownerId: string, title: string) => Promise<string>
+
+  /** Give the visitor a refresh token rotated `ago` (an interval literal) before now, as a token refresh would. */
+  stampRefresh: (visitorId: string, ago: string) => Promise<void>
 }
 
 async function inTxn<T>(conn: SQL, fn: (ctx: IVisitorTxn) => Promise<T>): Promise<T> {
@@ -165,17 +170,17 @@ async function inTxn<T>(conn: SQL, fn: (ctx: IVisitorTxn) => Promise<T>): Promis
 
   try {
     await conn.begin(async (tx) => {
-      const mint = async (anonymous: boolean): Promise<string> => {
+      const mint = async (anonymous: boolean, age?: string): Promise<string> => {
         const [user] = await tx`
-          insert into auth.users (id, is_anonymous)
-          values (gen_random_uuid(), ${anonymous})
+          insert into auth.users (id, is_anonymous, created_at)
+          values (gen_random_uuid(), ${anonymous}, now() - ${age ?? '0 seconds'}::interval)
           returning id`
 
         return user.id as string
       }
       out = await fn({
         tx: tx as unknown as SQL,
-        mintVisitor: () => mint(true),
+        mintVisitor: (age) => mint(true, age),
         mintRegistered: () => mint(false),
         become: async (visitorId) => {
           await tx`reset role`
@@ -194,6 +199,11 @@ async function inTxn<T>(conn: SQL, fn: (ctx: IVisitorTxn) => Promise<T>): Promis
             returning id`
 
           return todo.id as string
+        },
+        stampRefresh: async (visitorId, ago) => {
+          await tx`
+            insert into auth.refresh_tokens (user_id, revoked, created_at, updated_at)
+            values (${visitorId}, false, now() - ${ago}::interval, now() - ${ago}::interval)`
         },
       })
 
@@ -563,6 +573,28 @@ describe.skipIf(!reachable)('demo fixture: shared board and abuse caps', () => {
     const [row] = await db!`select proconfig from pg_proc where oid = 'public.reap_demo_visitors()'::regprocedure`
 
     expect(row.proconfig).toEqual(['search_path=""'])
+  })
+
+  // MARK: - Reaper
+
+  test('reap_demo_visitors drops a visitor idle for 24 hours and keeps one whose token refreshed within the day', async () => {
+    const remaining = await inTxn(db!, async (ctx) => {
+      await ctx.tx.unsafe(exampleSection("Reaper: a visitor's rows die with the visitor", 'Reaper schedule'))
+      const idle = await ctx.mintVisitor('30 hours')
+      const active = await ctx.mintVisitor('30 hours')
+
+      await ctx.stampRefresh(active, '1 hour')
+      await ctx.tx`select public.reap_demo_visitors()`
+      const [row] = await ctx.tx`
+        select
+          count(*) filter (where id = ${idle}::uuid)::int as idle,
+          count(*) filter (where id = ${active}::uuid)::int as active
+        from auth.users`
+
+      return { idle: row.idle as number, active: row.active as number }
+    })
+
+    expect(remaining).toEqual({ idle: 0, active: 1 })
   })
 
   // MARK: - Title length

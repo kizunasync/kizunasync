@@ -357,6 +357,10 @@ pub(crate) mod fake {
         /// One answer per push, in order; the last one answers every later push.
         push_results: RefCell<Vec<CliResult>>,
         pub(crate) repair_result: CliResult,
+        /// A file read at every push, so a test sees what it held then.
+        snapshot: Option<PathBuf>,
+        /// What [`Self::snapshot`] held at each push, same index.
+        pub(crate) snapshots: RefCell<Vec<String>>,
     }
 
     impl RecordingCli {
@@ -374,6 +378,16 @@ pub(crate) mod fake {
                 repair_workdirs: RefCell::new(Vec::new()),
                 push_results: RefCell::new(vec![push_result]),
                 repair_result,
+                snapshot: None,
+                snapshots: RefCell::new(Vec::new()),
+            }
+        }
+
+        /// Read `path` at every push into [`Self::snapshots`].
+        pub(crate) fn snapshotting(self, path: &Path) -> Self {
+            Self {
+                snapshot: Some(path.to_path_buf()),
+                ..self
             }
         }
 
@@ -391,6 +405,11 @@ pub(crate) mod fake {
         fn push(&self, target: &PushTarget, workdir: &Path) -> CliResult {
             self.pushes.borrow_mut().push(target.clone());
             self.push_workdirs.borrow_mut().push(workdir.to_path_buf());
+            if let Some(path) = &self.snapshot {
+                self.snapshots
+                    .borrow_mut()
+                    .push(std::fs::read_to_string(path).unwrap_or_default());
+            }
             let mut results = self.push_results.borrow_mut();
             if results.len() > 1 {
                 return results.remove(0);

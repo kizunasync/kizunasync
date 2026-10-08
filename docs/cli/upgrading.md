@@ -125,7 +125,35 @@ bunx kizunasync upgrade --reapply --yes --db-url "$KSYNC_DB_URL"
 
 A drifted ledger, one whose recorded hash for a pack file differs from the file's own, needs `--reapply` rather than a plain apply. Run `--reapply --dry-run` first to print the script, then `--reapply --yes` to apply it. Every pack file runs again, each one followed by the upsert that records the file's hash, inside one transaction: a failure anywhere in it rolls the whole batch back and leaves the ledger unchanged, the same guarantee a pending-files apply gives. Once the transaction commits, `upgrade` re-applies the job schedules the same way a pending-files apply does. `--reapply` also runs against an up-to-date ledger, to restore a pack object someone dropped or altered outside the CLI; there it writes no ledger row, because the ledger already records the right hash. Either way it resets the `kizunasync` schema's grants for `public`, `anon`, and `authenticated` to the pack's own and recreates the pack's policies and its two change-stamp triggers, `kizunasync_arm_stamp` and `kizunasync_stamp_transaction`, so a hand-applied grant or policy change does not survive a re-apply; your synced tables, their data, and `kizunasync._settings` are untouched.
 
-A re-apply does not reshape a `kizunasync` table that an earlier build of the pack created. The pack creates its tables with `create table if not exists`, so a column that build did not create stays missing, and the first statement that names it fails with `42703` (`42P01` for a missing table). The transaction rolls back, the ledger keeps its hash, and the run names the way out over the same connection: remove Kizuna with `kizunasync deprovision --purge`, then install it again with `kizunasync init`. The Management API path cannot run `deprovision`, so after a `--project-ref` run both commands take `--db-url` with the project's direct connection string, its password in `PGPASSWORD`. The purge drops the whole `kizunasync` schema, its configuration and bookkeeping rows included, and leaves your application tables and their data in place; [Deprovision ledgered objects](./removing.md) walks through it. `init`, `sync`, and the control panel print the same step when the re-apply they offer fails this way, and over a direct connection the panel then opens its menu on Remove Kizuna.
+A re-apply does not reshape a `kizunasync` table that an earlier build of the pack created. The pack creates its tables with `create table if not exists`, so a column that build did not create stays missing, and the first statement that names it fails with `42703` (`42P01` for a missing table). The transaction rolls back, the ledger keeps its hash, and the run names the way out over the same connection: remove Kizuna with `kizunasync deprovision --purge`, then install it again with `kizunasync init`. Over a direct connection both commands carry `--db-url`, with the password in `PGPASSWORD`. Over the Management API both carry `--project-ref <ref>`, with the token in `SUPABASE_ACCESS_TOKEN`:
+
+:::tabs{group=pm}
+```bash tab=npm
+npx kizunasync deprovision --purge --yes \
+  --confirm <project-ref> --project-ref <project-ref>
+npx kizunasync init --project-ref <project-ref>
+```
+
+```bash tab=pnpm
+pnpm dlx kizunasync deprovision --purge --yes \
+  --confirm <project-ref> --project-ref <project-ref>
+pnpm dlx kizunasync init --project-ref <project-ref>
+```
+
+```bash tab=yarn
+yarn dlx kizunasync deprovision --purge --yes \
+  --confirm <project-ref> --project-ref <project-ref>
+yarn dlx kizunasync init --project-ref <project-ref>
+```
+
+```bash tab=bun
+bunx kizunasync deprovision --purge --yes \
+  --confirm <project-ref> --project-ref <project-ref>
+bunx kizunasync init --project-ref <project-ref>
+```
+:::
+
+The purge applies with `--yes` and the project ref typed after `--confirm`. It drops the whole `kizunasync` schema, its configuration and bookkeeping rows included, and leaves your application tables and their data in place; [Deprovision ledgered objects](./removing.md) walks through it. `init`, `sync`, and the control panel print the same step when the re-apply they offer fails this way, and the panel then opens its menu on Remove Kizuna over either transport.
 
 You should now see the ledger reported as up to date, with the offending files' hashes matching the pack.
 

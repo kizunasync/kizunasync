@@ -29,7 +29,6 @@ export const metadata: Metadata = {
     'attachment sync',
     'Kizuna Sync',
   ],
-  alternates: { canonical: '/' },
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml', media: '(prefers-color-scheme: dark)' },
@@ -44,7 +43,6 @@ export const metadata: Metadata = {
     siteName: SITE_FULL_NAME,
     title: `${SITE_FULL_NAME} · ${TAGLINE}`,
     description: DESCRIPTION,
-    url: SITE_URL,
   },
   twitter: {
     card: 'summary_large_image',

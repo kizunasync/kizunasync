@@ -66,6 +66,15 @@ class TodoViewModel : ViewModel() {
         private set
     var needsReset by mutableStateOf(false)
         private set
+
+    /**
+     * Why sync is blocked, from the checkpoint: `identity_changed` when the
+     * local data belongs to another user than the token's, otherwise a server
+     * refusal.
+     */
+    var softBlockReason by mutableStateOf<String?>(null)
+        private set
+
     var rejections by mutableStateOf(listOf<KizunaSyncRejection>())
         private set
     var overwrites by mutableStateOf(listOf<KizunaSyncOverwrite>())
@@ -191,7 +200,9 @@ class TodoViewModel : ViewModel() {
         depth = engine.outboxDepth()
         rejections = engine.rejections()
         overwrites = engine.overwrites()
-        needsReset = engine.checkpoint().softBlocked
+        val checkpoint = engine.checkpoint()
+        needsReset = checkpoint.softBlocked
+        softBlockReason = checkpoint.softBlockReason
         val raw = engine.query(TodoBoard.TABLE)
         val rows = raw as? JSONArray ?: JSONArray()
         val next = mutableListOf<String>()
@@ -221,6 +232,7 @@ class TodoViewModel : ViewModel() {
             try {
                 client?.reset()
                 needsReset = false
+                softBlockReason = null
                 client?.sync()
                 refresh()
             } catch (e: Exception) {
@@ -264,7 +276,16 @@ class TodoViewModel : ViewModel() {
                 foregroundSource = foregroundSource,
                 needsResetSource = { client.checkpoint().softBlocked },
             )
-        scheduler?.onHealth { health -> needsReset = health.needsReset }
+        scheduler?.onHealth { health ->
+            needsReset = health.needsReset
+            if (health.needsReset) {
+                viewModelScope.launch {
+                    softBlockReason = runCatching { client.checkpoint().softBlockReason }.getOrNull()
+                }
+            } else {
+                softBlockReason = null
+            }
+        }
         if (liveSync) {
             scheduler?.start()
         }
@@ -336,7 +357,11 @@ private fun CachePane(model: TodoViewModel) {
     model.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (model.needsReset) {
         Text(
-            "The server refused this client, so sync is blocked until reset() runs.",
+            if (model.softBlockReason == "identity_changed") {
+                "The local data belongs to another user than the one signed in, so sync is blocked until reset() runs."
+            } else {
+                "The server refused this client, so sync is blocked until reset() runs."
+            },
             color = MaterialTheme.colorScheme.error,
         )
         Button(onClick = { model.resetLocal() }, modifier = Modifier.padding(top = 8.dp)) {

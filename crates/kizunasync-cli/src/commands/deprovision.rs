@@ -38,7 +38,13 @@
 //!   sequence and index with it, the ledger last of all, then every
 //!   `kizunasync*` role no other database still uses. It needs the target
 //!   typed out with `--confirm` on top of `--yes`, because it removes data
-//!   nothing else in this binary removes.
+//!   nothing else in this binary removes. Before the purge runs, `kizunasync`
+//!   leaves the Data API's exposed schemas, the inverse of `init`'s step:
+//!   PostgREST cannot build its schema cache while an exposed schema is
+//!   missing (PGRST002). That is the project's PostgREST config over the
+//!   Management API, read back until it no longer lists the schema;
+//!   `[api].schemas` in `supabase/config.toml` locally; and a warning to do
+//!   it by hand anywhere else. A purge that then fails puts the entry back.
 //!
 //! In a Supabase CLI project (a `supabase/config.toml` at the root) the
 //! teardown is a migration, `<ts>_kizunasync_deprovision.sql`, applied with
@@ -46,13 +52,19 @@
 //! records it, and replaying the directory reproduces the state. Each
 //! statement in that file checks that what it needs exists, and under
 //! `--purge` the file always ends with that purge, even over an empty ledger,
-//! so it holds over whatever the files before it left. Anywhere else
-//! the teardown runs as one transaction over the connection.
+//! so it holds over whatever the files before it left. Anywhere else, and
+//! always over the Management API (`--project-ref`), the teardown runs as one
+//! transaction over the connection: a run through the API writes no local
+//! file, as `init --project-ref` writes none.
 
+use std::path::Path;
+use std::time::Duration;
+
+use crate::api_schemas::{UnpatchOutcome, unpatch_api_schemas};
 use crate::applier::Applier;
 use crate::catalog::SchemaSource;
 use crate::clock::migration_version;
-use crate::commands::history_gate::{gate_migration_history, push_written};
+use crate::commands::history_gate::{gate_migration_history, is_recorded, push_written};
 use crate::commands::init::DirectConnection;
 use crate::commands::{FAILURE, OK, UNUSABLE, refuse_newer_ledger};
 use crate::constants::{INTERNAL_PROVISIONS, SCHEMA};
@@ -63,10 +75,12 @@ use crate::ledger::{
     CanonicalizationReport, DropPlan, DropStatement, ObjectKind, ProvisionRow, audit_object_names,
     build_drop_plan, required_relation,
 };
+use crate::management::{ExposedSchemas, UnexposeOutcome, unexpose_outcome};
 use crate::migration_history::local_versions;
+use crate::project_ref::ProjectRef;
 use crate::provision::{is_ledger_present, read_ledger_rows};
-use crate::row::{optional_string, require_number, require_string};
-use crate::supabase_cli::SupabaseCli;
+use crate::row::{optional_string, require_bool, require_number, require_string};
+use crate::supabase_cli::{PushTarget, SupabaseCli};
 use crate::ui::Ui;
 use crate::workdir::ProjectPaths;
 
@@ -141,6 +155,27 @@ impl PurgeRequest {
 /// host, or the `postgres.<ref>` pooler user), and `local` for anything else.
 #[must_use]
 pub fn expected_confirmation(url: &str) -> String {
+    hosted_project_ref(url).unwrap_or(LOCAL_TARGET).to_owned()
+}
+
+/// The Supabase project ref a connection string names: the
+/// `db.<ref>.supabase.co` host, or the `postgres.<ref>` pooler user.
+fn hosted_project_ref(url: &str) -> Option<&str> {
+    let (user, host) = user_and_host(url);
+    if let Some(rest) = host.strip_prefix("db.")
+        && let Some(reference) = rest.strip_suffix(".supabase.co")
+        && !reference.is_empty()
+    {
+        return Some(reference);
+    }
+
+    user.strip_prefix("postgres.")
+        .filter(|reference| !reference.is_empty())
+}
+
+/// The user and the host of a connection string, without the password, the
+/// port, or an IPv6 host's brackets.
+fn user_and_host(url: &str) -> (&str, &str) {
     let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
     let authority = after_scheme
         .split(['/', '?'])
@@ -149,21 +184,71 @@ pub fn expected_confirmation(url: &str) -> String {
     let (user, host) = authority
         .rsplit_once('@')
         .map_or(("", authority), |(user, host)| (user, host));
-    let host = host.split(':').next().unwrap_or(host);
-    if let Some(rest) = host.strip_prefix("db.")
-        && let Some(reference) = rest.strip_suffix(".supabase.co")
-        && !reference.is_empty()
-    {
-        return reference.to_owned();
-    }
-    let user = user.split(':').next().unwrap_or(user);
-    if let Some(reference) = user.strip_prefix("postgres.")
-        && !reference.is_empty()
-    {
-        return reference.to_owned();
-    }
+    let host = match host.strip_prefix('[') {
+        Some(bracketed) => bracketed.split(']').next().unwrap_or(bracketed),
+        None => host.split(':').next().unwrap_or(host),
+    };
 
-    LOCAL_TARGET.to_owned()
+    (user.split(':').next().unwrap_or(user), host)
+}
+
+/// The list a direct connection's purge takes `kizunasync` out of, decided by
+/// the database the teardown reaches, never by the files beside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExposureTarget {
+    /// The local stack, whose `supabase/config.toml` lists the schemas.
+    ConfigToml,
+    /// The hosted project with this ref, through the Management API.
+    ManagementApi(ProjectRef),
+    /// Neither: the plan warns to do it by hand.
+    ByHand,
+}
+
+/// Where a purge over `connection` takes `kizunasync` out of the exposed
+/// schemas. The local stack (`--local`, or a URL to this machine) edits
+/// `supabase/config.toml` when there is one. A hosted project goes through
+/// the Management API when the run `has_token` and the ref is known:
+/// `linked` for a `--linked` push, else the one the URL names. A pooler user
+/// (`postgres.<ref>`) names a hosted project even on this machine's address,
+/// as a tunnel does. Anything else is by hand: a local file never stands in
+/// for a hosted project's settings.
+#[must_use]
+pub fn exposure_target(
+    connection: &DirectConnection,
+    paths: &ProjectPaths,
+    linked: Option<&ProjectRef>,
+    has_token: bool,
+) -> ExposureTarget {
+    let project_ref = match &connection.push {
+        PushTarget::Linked => linked.cloned(),
+        PushTarget::DbUrl(url) if is_hosted(url) => {
+            hosted_project_ref(url).and_then(|reference| ProjectRef::parse(reference).ok())
+        }
+        PushTarget::Local | PushTarget::DbUrl(_) => {
+            return if paths.config_toml.is_file() {
+                ExposureTarget::ConfigToml
+            } else {
+                ExposureTarget::ByHand
+            };
+        }
+    };
+
+    match project_ref {
+        Some(project_ref) if has_token => ExposureTarget::ManagementApi(project_ref),
+        _ => ExposureTarget::ByHand,
+    }
+}
+
+/// Whether a connection string reaches a hosted project: a pooler user that
+/// names a project ref, or any host but this machine. The local stack's own
+/// pooler user (`postgres.pooler-dev`) names none.
+fn is_hosted(url: &str) -> bool {
+    let (user, host) = user_and_host(url);
+    let names_a_project = user
+        .strip_prefix("postgres.")
+        .is_some_and(|reference| ProjectRef::parse(reference).is_ok());
+
+    names_a_project || !crate::tls_url::is_loopback_host(host)
 }
 
 /// What a connection that names no hosted project is confirmed with.
@@ -581,6 +666,87 @@ pub struct MigrationPush<'a> {
     pub now_unix: i64,
 }
 
+/// Where `--purge` takes `kizunasync` out of the Data API's exposed schemas,
+/// before the schema goes: PostgREST cannot build its schema cache while an
+/// exposed schema is missing (PGRST002), and the whole Data API stops. A
+/// plain teardown keeps the schema, and with it the exposure.
+pub enum Exposure<'a> {
+    /// The hosted project's PostgREST config, through the Management API.
+    ManagementApi {
+        /// The project's exposed-schema list.
+        api: &'a dyn ExposedSchemas,
+        /// The project, which the next step after an unknown outcome names.
+        project_ref: &'a ProjectRef,
+    },
+    /// `[api].schemas` in this `supabase/config.toml`.
+    ConfigToml(&'a Path),
+    /// A connection no config file describes: the plan warns to do it by hand.
+    ByHand,
+}
+
+/// What the Data API step changed before the purge, which a purge that did
+/// not apply puts back.
+enum Unexposed<'a> {
+    /// Nothing.
+    Nothing,
+    /// The Management API list of this project no longer holds the schema.
+    Listed {
+        api: &'a dyn ExposedSchemas,
+        project_ref: &'a ProjectRef,
+    },
+    /// `supabase/config.toml` held `body` before the step.
+    ConfigToml { path: &'a Path, body: String },
+}
+
+/// The label `init` puts before its exposure line.
+const DATA_API: &str = "  Data API:         ";
+
+/// The warning a purge over a connection no config file describes prints.
+const BY_HAND: &str = "  Data API:         remove kizunasync from this project's Data API exposed schemas (dashboard: Project Settings, Data API) before this purge, or the Data API stops serving every schema (PGRST002) until you do; or run the purge with --project-ref, which does it for you";
+
+/// What follows the removal from `supabase/config.toml`.
+const RESTART: &str = "the local stack reads it at start, so restart it (`supabase stop`, then `supabase start`) after the purge";
+
+/// The refusal when the schema is the only one the project exposes.
+const ONLY_EXPOSED: &str = "kizunasync deprovision: refusing, kizunasync is the only exposed schema of this project, and the Data API cannot run with none. Expose the schemas your app uses in its place (Project Settings, Data API), then run this again. Nothing was applied.";
+
+/// The refusal when the schema is the only entry of `[api].schemas`.
+const ONLY_ENTRY: &str = "kizunasync deprovision: refusing, kizunasync is the only entry in [api].schemas of supabase/config.toml, and the Data API cannot run with none. Put the schemas your app uses in its place, then run this again. Nothing was applied.";
+
+/// The line for a schema the Management API's list does not hold.
+const NOT_EXPOSED: &str = "  Data API:         kizunasync is not exposed";
+
+/// The line for a `supabase/config.toml` that does not list the schema.
+const NOT_IN_CONFIG: &str = "  Data API:         supabase/config.toml does not expose kizunasync";
+
+/// The line for a `supabase/config.toml` that does not parse, left untouched.
+const CONFIG_UNPARSEABLE: &str = "  Data API:         supabase/config.toml does not parse: left untouched. Remove \"kizunasync\" from [api].schemas by hand.";
+
+/// The wait between two reads while a removal reaches the Management API's
+/// list.
+const CONVERGE_EVERY: Duration = Duration::from_secs(3);
+
+/// The reads at most, [`CONVERGE_EVERY`] apart: 60 s in all.
+const CONVERGE_READS: u32 = 20;
+
+/// A teardown that did not apply: the exit code, the migration file it left
+/// in the project when it wrote one, and whether it committed.
+struct Unapplied {
+    code: i32,
+    written: Option<String>,
+    committed: Committed,
+}
+
+/// What is known about whether a teardown that failed committed.
+enum Committed {
+    /// It did not: the database refused the script, or the migration history
+    /// does not record the file.
+    No,
+    /// It may have, for this reason: the connection gave up without the
+    /// database's answer, or the history records the file or cannot be read.
+    Unknown(String),
+}
+
 /// The suffix of the migration a teardown writes.
 pub const MIGRATION_LABEL: &str = "kizunasync_deprovision";
 
@@ -592,14 +758,16 @@ pub fn delivers_by_migration(paths: &ProjectPaths) -> bool {
 }
 
 /// The whole command over a connection the caller already resolved: read the
-/// ledger, count what a purge would remove, then [`plan_and_apply`]. `url`
-/// names the target a purge is confirmed with. A ledger a purge already
-/// removed reads as empty.
+/// ledger, count what a purge would remove, then [`plan_and_apply`]. `target`
+/// is the word a purge is confirmed with: [`expected_confirmation`] of a
+/// connection string, or the project ref. A ledger a purge already removed
+/// reads as empty.
 pub fn run_over(
     applier: &dyn Applier,
-    url: &str,
+    target: &str,
     request: &DeprovisionRequest<'_>,
     delivery: &Delivery<'_>,
+    exposure: &Exposure<'_>,
     env: &Env,
     ui: &mut Ui,
 ) -> i32 {
@@ -623,7 +791,7 @@ pub fn run_over(
     let purge = if request.purge {
         match read_schema_counts(applier) {
             Ok(counts) => Some(PurgeRequest {
-                expected: expected_confirmation(url),
+                expected: target.to_owned(),
                 typed: request.confirm.map(ToOwned::to_owned),
                 counts,
             }),
@@ -645,21 +813,45 @@ pub fn run_over(
         purge,
     };
 
-    plan_and_apply(&rows, &flags, env, applier, delivery, ui)
+    plan_and_apply(&rows, &flags, env, applier, delivery, exposure, ui)
+}
+
+/// [`run_over`] through the Management API: the plan is read and applied
+/// through `api` as one transaction, a purge is confirmed with `project_ref`,
+/// and before it runs `kizunasync` leaves the project's exposed schemas.
+pub fn run_over_api<A: Applier + ExposedSchemas>(
+    api: &A,
+    project_ref: &ProjectRef,
+    request: &DeprovisionRequest<'_>,
+    env: &Env,
+    ui: &mut Ui,
+) -> i32 {
+    let execute = |sql: &str| api.run_script(sql);
+
+    run_over(
+        api,
+        project_ref.as_str(),
+        request,
+        &Delivery::Direct(&execute),
+        &Exposure::ManagementApi { api, project_ref },
+        env,
+        ui,
+    )
 }
 
 /// Refuse a ledger a newer kizunasync recorded, and anything outside the
 /// schema that depends on the pack, then print the plan, then apply it if the
 /// guard allows. `read` answers the ledger's `pack-file` versions and the
-/// `pg_depend` read. Separated from transport resolution so tests drive it
-/// with injected rows, a fake read port, and a fake delivery, never touching
-/// a live schema.
+/// `pg_depend` read. A purge takes `kizunasync` out of `exposure` first.
+/// Separated from transport resolution so tests drive it with injected rows,
+/// a fake read port, and a fake delivery, never touching a live schema.
 pub fn plan_and_apply(
     rows: &[ProvisionRow],
     flags: &DeprovisionFlags,
     env: &Env,
     read: &dyn Applier,
     delivery: &Delivery<'_>,
+    exposure: &Exposure<'_>,
     ui: &mut Ui,
 ) -> i32 {
     if let Some(code) = refuse_newer_pack(read, ui) {
@@ -685,18 +877,39 @@ pub fn plan_and_apply(
         return OK;
     }
 
+    if flags.purge.is_some()
+        && let Some(code) = preview_exposure(exposure, ui)
+    {
+        return code;
+    }
     print_plan(&plan, &audit, flags, delivery.form(), ui);
 
     if let Some(code) = guard_before_apply(flags, env, ui) {
         return code;
     }
 
+    let unexposed = if flags.purge.is_some() {
+        match unexpose_first(exposure, ui) {
+            Ok(unexposed) => unexposed,
+            Err(code) => return code,
+        }
+    } else {
+        Unexposed::Nothing
+    };
     let applied = match delivery {
         Delivery::Direct(execute) => execute(&render_down_migration(rows, flags.purge.as_ref()))
             .map_err(|cause| {
                 ui.log(&format!("\n  deprovision apply failed:\n    {cause}"));
 
-                FAILURE
+                Unapplied {
+                    code: FAILURE,
+                    written: None,
+                    committed: match cause {
+                        // The database answered: the transaction rolled back.
+                        crate::error::Error::Sql { .. } => Committed::No,
+                        other => Committed::Unknown(other.to_string()),
+                    },
+                }
             }),
         Delivery::Migration(push) => write_and_push(
             push,
@@ -704,14 +917,317 @@ pub fn plan_and_apply(
             ui,
         ),
     };
-    if let Err(code) = applied {
-        return code;
+    if let Err(unapplied) = applied {
+        expose_again(&unexposed, read, &unapplied, ui);
+
+        return unapplied.code;
     }
 
     print_apply_summary(&plan, flags, ui);
     report_kept_roles(&plan, read, ui);
 
     OK
+}
+
+/// What the plan says about the Data API step, read before anything changes.
+enum Preview {
+    /// The line the plan prints.
+    Line(String),
+    /// Nothing this run can edit: the warning.
+    ByHand,
+    /// The schema is the only one the Management API's list holds.
+    OnlyExposed,
+    /// The schema is the only entry of `[api].schemas`.
+    OnlyEntry,
+    /// The list could not be read, for this reason.
+    Unreadable(String),
+}
+
+fn read_preview(exposure: &Exposure<'_>) -> Preview {
+    match exposure {
+        Exposure::ManagementApi { api, .. } => match api.exposed_schemas() {
+            Ok(exposed) => match unexpose_outcome(&exposed, SCHEMA) {
+                UnexposeOutcome::Removed => Preview::Line(removed_line("would remove")),
+                UnexposeOutcome::NotPresent => Preview::Line(NOT_EXPOSED.to_owned()),
+                UnexposeOutcome::OnlyExposed => Preview::OnlyExposed,
+            },
+            Err(cause) => Preview::Unreadable(cause.to_string()),
+        },
+        Exposure::ConfigToml(path) => match read_config(path) {
+            Ok(body) => match unpatch_api_schemas(&body).outcome {
+                UnpatchOutcome::Removed => Preview::Line(config_removed_line("would remove")),
+                UnpatchOutcome::NotPresent => Preview::Line(NOT_IN_CONFIG.to_owned()),
+                UnpatchOutcome::Unparseable => Preview::Line(CONFIG_UNPARSEABLE.to_owned()),
+                UnpatchOutcome::OnlyEntry => Preview::OnlyEntry,
+            },
+            Err(cause) => Preview::Unreadable(cause),
+        },
+        Exposure::ByHand => Preview::ByHand,
+    }
+}
+
+/// Print what the Data API step will do, ahead of the plan since it runs
+/// first. `Some(2)` refuses the purge before anything changes: the list
+/// cannot be read, or the schema is the only one it holds.
+fn preview_exposure(exposure: &Exposure<'_>, ui: &mut Ui) -> Option<i32> {
+    match read_preview(exposure) {
+        Preview::Line(line) => {
+            ui.log(&line);
+
+            None
+        }
+        Preview::ByHand => {
+            ui.warn(BY_HAND);
+
+            None
+        }
+        Preview::OnlyExposed => Some(refuse(ONLY_EXPOSED, ui)),
+        Preview::OnlyEntry => Some(refuse(ONLY_ENTRY, ui)),
+        Preview::Unreadable(cause) => Some(unreadable(&cause, ui)),
+    }
+}
+
+/// What a purge would do to the Data API, for a plan confirmed before the
+/// purge is chosen: the control panel's removal shows it ahead of its typed
+/// confirmation. A purge the step would refuse is named here, not refused.
+pub fn announce_exposure(exposure: &Exposure<'_>, ui: &mut Ui) {
+    ui.log("\n  a purge also takes kizunasync out of the Data API first:");
+    match read_preview(exposure) {
+        Preview::Line(line) => ui.log(&line),
+        Preview::ByHand => ui.warn(BY_HAND),
+        Preview::OnlyExposed => ui.warn(&format!(
+            "{DATA_API}{SCHEMA} is the only exposed schema of this project, so a purge would be refused"
+        )),
+        Preview::OnlyEntry => ui.warn(&format!(
+            "{DATA_API}{SCHEMA} is the only entry in [api].schemas, so a purge would be refused"
+        )),
+        Preview::Unreadable(cause) => ui.warn(&format!(
+            "{DATA_API}could not read the exposed schemas: {cause}"
+        )),
+    }
+}
+
+fn refuse(reason: &str, ui: &mut Ui) -> i32 {
+    ui.error(reason);
+
+    UNUSABLE
+}
+
+fn unreadable(cause: &str, ui: &mut Ui) -> i32 {
+    ui.error(&format!(
+        "kizunasync deprovision: could not read the exposed schemas:\n  {cause}\n  nothing was applied."
+    ));
+
+    UNUSABLE
+}
+
+/// The Data API step, before the purge: what it changed, or the exit code
+/// once the reason is on `ui` and nothing was dropped.
+fn unexpose_first<'a>(
+    exposure: &Exposure<'a>,
+    ui: &mut Ui,
+) -> std::result::Result<Unexposed<'a>, i32> {
+    match exposure {
+        Exposure::ManagementApi { api, project_ref } => unexpose_over_api(*api, project_ref, ui),
+        Exposure::ConfigToml(path) => unexpose_in_config(path, ui),
+        Exposure::ByHand => Ok(Unexposed::Nothing),
+    }
+}
+
+/// Drop the schema from the Management API's list, then read the list every
+/// [`CONVERGE_EVERY`] until it no longer holds the schema: the API applies a
+/// PATCH some time after it answers it, and the purge must not run before.
+fn unexpose_over_api<'a>(
+    api: &'a dyn ExposedSchemas,
+    project_ref: &'a ProjectRef,
+    ui: &mut Ui,
+) -> std::result::Result<Unexposed<'a>, i32> {
+    match api.unexpose_schema(SCHEMA) {
+        Ok(UnexposeOutcome::Removed) => {}
+        Ok(UnexposeOutcome::NotPresent) => {
+            ui.log(NOT_EXPOSED);
+
+            return Ok(Unexposed::Nothing);
+        }
+        Ok(UnexposeOutcome::OnlyExposed) => return Err(refuse(ONLY_EXPOSED, ui)),
+        Err(cause) => return Err(not_removed(&cause.to_string(), ui)),
+    }
+
+    for _ in 0..CONVERGE_READS {
+        api.wait(CONVERGE_EVERY);
+        match api.exposed_schemas() {
+            Ok(exposed) if !exposed.iter().any(|entry| entry == SCHEMA) => {
+                ui.log(&removed_line("removed"));
+
+                return Ok(Unexposed::Listed { api, project_ref });
+            }
+            Ok(_) => {}
+            Err(cause) => {
+                ui.error(&format!(
+                    "{DATA_API}the removal of {SCHEMA} from the exposed schemas was accepted but could not be confirmed ({cause}), so nothing was dropped; run the same command again."
+                ));
+
+                return Err(FAILURE);
+            }
+        }
+    }
+    ui.error(&format!(
+        "{DATA_API}the removal of {SCHEMA} from the exposed schemas was requested but Supabase has not applied it yet, so nothing was dropped; run the same command again."
+    ));
+
+    Err(FAILURE)
+}
+
+/// Take the schema out of `[api].schemas` before the purge.
+fn unexpose_in_config<'a>(path: &'a Path, ui: &mut Ui) -> std::result::Result<Unexposed<'a>, i32> {
+    let body = read_config(path).map_err(|cause| not_removed(&cause, ui))?;
+    let unpatch = unpatch_api_schemas(&body);
+    match unpatch.outcome {
+        UnpatchOutcome::Removed => {
+            std::fs::write(path, &unpatch.body).map_err(|cause| {
+                not_removed(
+                    &format!("could not write supabase/config.toml: {cause}"),
+                    ui,
+                )
+            })?;
+            ui.log(&format!("{}; {RESTART}", config_removed_line("removed")));
+
+            Ok(Unexposed::ConfigToml { path, body })
+        }
+        UnpatchOutcome::NotPresent => {
+            ui.log(NOT_IN_CONFIG);
+
+            Ok(Unexposed::Nothing)
+        }
+        UnpatchOutcome::Unparseable => {
+            ui.log(CONFIG_UNPARSEABLE);
+
+            Ok(Unexposed::Nothing)
+        }
+        UnpatchOutcome::OnlyEntry => Err(refuse(ONLY_ENTRY, ui)),
+    }
+}
+
+fn not_removed(cause: &str, ui: &mut Ui) -> i32 {
+    ui.error(&format!(
+        "{DATA_API}could not remove {SCHEMA} from the exposed schemas:\n    {cause}\n  nothing was dropped. Run the same command again."
+    ));
+
+    FAILURE
+}
+
+/// Put back what the Data API step changed, only when the purge is known
+/// not to have committed and the schema is still there: exposing a schema the
+/// failed run dropped after all would stop the Data API (PGRST002). Best
+/// effort: every outcome is reported, and the purge's own failure stays the
+/// exit code. When a put-back follows a written migration, the run says that
+/// file still drops the schema the list holds again.
+fn expose_again(unexposed: &Unexposed<'_>, read: &dyn Applier, unapplied: &Unapplied, ui: &mut Ui) {
+    let next_step = match unexposed {
+        Unexposed::Nothing => return,
+        Unexposed::Listed { project_ref, .. } => format!(
+            "so {SCHEMA} stays unexposed; run `kizunasync status --project-ref {project_ref}`: if the schema is still there, `kizunasync init --project-ref {project_ref}` exposes it again"
+        ),
+        Unexposed::ConfigToml { .. } => format!(
+            "so supabase/config.toml stays without {SCHEMA}; run `kizunasync status`: if the schema is still there, `kizunasync init` exposes it again"
+        ),
+    };
+    if let Committed::Unknown(cause) = &unapplied.committed {
+        ui.warn(&format!(
+            "{DATA_API}the purge's outcome is unknown ({cause}), {next_step}"
+        ));
+
+        return;
+    }
+    match schema_present(read) {
+        Ok(true) => {}
+        Ok(false) => {
+            ui.log(&format!(
+                "{DATA_API}the {SCHEMA} schema is gone, so {SCHEMA} stays unexposed"
+            ));
+
+            return;
+        }
+        Err(cause) => {
+            ui.warn(&format!(
+                "{DATA_API}could not read whether the {SCHEMA} schema still exists ({cause}), so {SCHEMA} stays unexposed: the schema may be gone"
+            ));
+
+            return;
+        }
+    }
+
+    let holder = match unexposed {
+        Unexposed::Nothing => return,
+        Unexposed::Listed { api, .. } => match api.expose_schema(SCHEMA) {
+            Ok(_) => {
+                ui.log(&format!(
+                    "{DATA_API}exposed {SCHEMA} again, since the purge did not apply"
+                ));
+
+                "the project's exposed schemas list"
+            }
+            Err(cause) => {
+                ui.error(&format!(
+                    "{DATA_API}could not expose {SCHEMA} again after the failed purge:\n    {cause}\n  add it back to the project's exposed schemas (Project Settings, Data API)."
+                ));
+
+                return;
+            }
+        },
+        Unexposed::ConfigToml { path, body } => match std::fs::write(path, body) {
+            Ok(()) => {
+                ui.log(&format!(
+                    "{DATA_API}put supabase/config.toml back, since the purge did not apply"
+                ));
+
+                "supabase/config.toml lists"
+            }
+            Err(cause) => {
+                ui.error(&format!(
+                    "{DATA_API}could not put supabase/config.toml back:\n    {cause}\n  add \"{SCHEMA}\" to [api].schemas again by hand."
+                ));
+
+                return;
+            }
+        },
+    };
+    if let Some(file) = &unapplied.written {
+        ui.log(&format!(
+            "  the migration {file} drops the schema while {holder} {SCHEMA} again, so run `kizunasync deprovision --purge` again instead of pushing {file} by hand."
+        ));
+    }
+}
+
+/// Whether the `kizunasync` schema exists.
+fn schema_present(read: &dyn Applier) -> Result<bool> {
+    let rows = read.run_query(&format!(
+        "select exists (select 1 from pg_namespace where nspname = '{SCHEMA}') as present;"
+    ))?;
+    let Some(row) = rows.first() else {
+        return Err(crate::error::Error::Boundary(
+            "the schema probe returned no row, expected exactly 1".to_owned(),
+        ));
+    };
+
+    require_bool(row, "present")
+}
+
+fn read_config(path: &Path) -> std::result::Result<String, String> {
+    std::fs::read_to_string(path)
+        .map_err(|cause| format!("could not read supabase/config.toml: {cause}"))
+}
+
+/// The Management API line for the removal, `removal` naming it as planned
+/// or as done.
+fn removed_line(removal: &str) -> String {
+    format!("{DATA_API}{removal} {SCHEMA} from the exposed schemas")
+}
+
+/// The `supabase/config.toml` line for the removal, `removal` naming it as
+/// planned or as done.
+fn config_removed_line(removal: &str) -> String {
+    format!("{DATA_API}{removal} \"{SCHEMA}\" from [api].schemas in supabase/config.toml")
 }
 
 /// Write `sql` as the next migration, named past every version the project
@@ -722,7 +1238,12 @@ fn write_and_push(
     push: &MigrationPush<'_>,
     sql: &str,
     ui: &mut Ui,
-) -> std::result::Result<(), i32> {
+) -> std::result::Result<(), Unapplied> {
+    let unwritten = |code| Unapplied {
+        code,
+        written: None,
+        committed: Committed::No,
+    };
     let mut taken = gate_migration_history(
         push.direct,
         push.paths,
@@ -730,7 +1251,8 @@ fn write_and_push(
         push.supabase,
         &mut None,
         ui,
-    )?;
+    )
+    .map_err(unwritten)?;
     taken.extend(local_versions(&push.paths.migrations_dir));
     let name = format!(
         "{}_{MIGRATION_LABEL}.sql",
@@ -743,24 +1265,40 @@ fn write_and_push(
             "\n  could not write {name}:\n    {cause}\n  nothing was applied."
         ));
 
-        return Err(FAILURE);
+        return Err(unwritten(FAILURE));
     }
     ui.log(&format!("\n  emitted {name}"));
     push_written(
         push.direct,
         push.paths,
-        &[name],
+        std::slice::from_ref(&name),
         push.schemas,
         push.supabase,
         &mut None,
         ui,
-    )?;
+    )
+    .map_err(|code| Unapplied {
+        code,
+        committed: pushed_or_not(push, &name),
+        written: Some(name.clone()),
+    })?;
     ui.log(&format!(
         "  applied via supabase db push {}.",
         push.direct.push.describe()
     ));
 
     Ok(())
+}
+
+/// Whether the teardown `name` a failed push left committed, as the migration
+/// history read again says: not recorded is not applied; recorded, or a
+/// history that cannot be read, leaves it unknown.
+fn pushed_or_not(push: &MigrationPush<'_>, name: &str) -> Committed {
+    match push.schemas.applied_migrations(&push.direct.url) {
+        Ok(applied) if !is_recorded(name, &applied) => Committed::No,
+        Ok(_) => Committed::Unknown(format!("the migration history records {name} as applied")),
+        Err(cause) => Committed::Unknown(format!("could not read the migration history: {cause}")),
+    }
 }
 
 /// `Some(2)` when a newer kizunasync recorded one of the ledger's
@@ -966,7 +1504,8 @@ pub fn refuse_local_only(ui: &mut Ui) -> i32 {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
+    use std::time::Duration;
 
     use serde_json::Value;
 
@@ -974,6 +1513,7 @@ mod tests {
     use crate::applier::fake::{FakeApplier, row, text_row};
     use crate::config::KizunaSyncConfig;
     use crate::error::Error;
+    use crate::management::ExposeOutcome;
     use crate::migration_history::AppliedMigration;
     use crate::migration_history::fake::recorded;
     use crate::proposals::SchemaCatalog;
@@ -1044,7 +1584,15 @@ mod tests {
     ) -> (i32, Capture) {
         let (mut ui, capture) = Ui::capture();
         let execute = recorder.execute();
-        let code = plan_and_apply(rows, flags, env, read, &Delivery::Direct(&execute), &mut ui);
+        let code = plan_and_apply(
+            rows,
+            flags,
+            env,
+            read,
+            &Delivery::Direct(&execute),
+            &Exposure::ByHand,
+            &mut ui,
+        );
 
         (code, capture)
     }
@@ -1781,8 +2329,23 @@ mod tests {
 
     // MARK: - delivery as a migration
 
-    /// A database whose only answer is its migration history.
-    struct History(Vec<AppliedMigration>);
+    /// A database whose only answer is its migration history. Once a teardown
+    /// file sits in `after_write`'s directory, the history records it, or
+    /// cannot be read when the flag says so: what a push that failed halfway
+    /// leaves.
+    struct History {
+        applied: Vec<AppliedMigration>,
+        after_write: Option<(std::path::PathBuf, bool)>,
+    }
+
+    impl History {
+        fn of(applied: Vec<AppliedMigration>) -> Self {
+            Self {
+                applied,
+                after_write: None,
+            }
+        }
+    }
 
     impl SchemaSource for History {
         fn probe(&self, _url: &str) -> Result<ServerFacts> {
@@ -1802,7 +2365,29 @@ mod tests {
         }
 
         fn applied_migrations(&self, _url: &str) -> Result<Vec<AppliedMigration>> {
-            Ok(self.0.clone())
+            let mut applied = self.applied.clone();
+            let Some((dir, unreadable)) = &self.after_write else {
+                return Ok(applied);
+            };
+            let written: Vec<String> = std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .filter_map(std::result::Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.ends_with(&format!("_{MIGRATION_LABEL}.sql")))
+                .map(|name| name.trim_end_matches(".sql").to_owned())
+                .collect();
+            if written.is_empty() {
+                return Ok(applied);
+            }
+            if *unreadable {
+                return Err(Error::Db("the migration history is unreachable".to_owned()));
+            }
+            applied.extend(recorded(
+                &written.iter().map(String::as_str).collect::<Vec<_>>(),
+            ));
+
+            Ok(applied)
         }
 
         fn ledger_rows(&self, _url: &str) -> Result<Vec<crate::provision::LedgerRow>> {
@@ -1951,7 +2536,7 @@ mod tests {
             url: "postgresql://postgres:postgres@127.0.0.1:55322/scratch".to_owned(),
             push: PushTarget::Local,
         };
-        let history = History(recorded(&["20231114221300_kizunasync_init"]));
+        let history = History::of(recorded(&["20231114221300_kizunasync_init"]));
         let cli = RecordingCli::new();
         let delivery = Delivery::Migration(MigrationPush {
             direct: &direct,
@@ -1973,6 +2558,7 @@ mod tests {
             &Env::default(),
             &read_port(),
             &delivery,
+            &Exposure::ConfigToml(&paths.config_toml),
             &mut ui,
         );
         let name = "20231114221320_kizunasync_deprovision.sql";
@@ -2011,7 +2597,7 @@ mod tests {
             url: "postgresql://postgres:postgres@127.0.0.1:55322/scratch".to_owned(),
             push: PushTarget::Local,
         };
-        let history = History(recorded(&["20231114221300_kizunasync_init"]));
+        let history = History::of(recorded(&["20231114221300_kizunasync_init"]));
         let cli = RecordingCli::answering(
             crate::supabase_cli::CliResult {
                 ok: false,
@@ -2040,6 +2626,7 @@ mod tests {
             &Env::default(),
             &read_port(),
             &delivery,
+            &Exposure::ConfigToml(&paths.config_toml),
             &mut ui,
         );
 
@@ -2075,9 +2662,10 @@ mod tests {
         assert_eq!(
             run_over(
                 &read,
-                "postgresql://local/db",
+                LOCAL_TARGET,
                 &plain,
                 &delivery,
+                &Exposure::ByHand,
                 &Env::default(),
                 &mut ui
             ),
@@ -2108,9 +2696,10 @@ mod tests {
         assert_eq!(
             run_over(
                 &read,
-                "postgresql://local/db",
+                LOCAL_TARGET,
                 &purge,
                 &delivery,
+                &Exposure::ByHand,
                 &Env::default(),
                 &mut ui
             ),
@@ -2120,5 +2709,1115 @@ mod tests {
         );
         assert_eq!(recorder.applied.borrow().len(), 1);
         assert!(recorder.applied.borrow()[0].contains("drop schema if exists kizunasync cascade;"));
+    }
+
+    // MARK: - over the Management API
+
+    const PROJECT_REF: &str = "abcdefghijklmnopqrst";
+
+    /// The header every teardown script opens with.
+    const TEARDOWN: &str = "-- Generated by `kizunasync deprovision";
+
+    fn project_ref() -> ProjectRef {
+        ProjectRef::parse(PROJECT_REF).unwrap()
+    }
+
+    /// A hosted project: its database, and the exposed-schema list its
+    /// PostgREST config carries, which a removal reaches only after `stale`
+    /// reads, the way the Management API applies a PATCH.
+    struct Hosted {
+        db: FakeApplier,
+        exposed: RefCell<Vec<String>>,
+        /// Whether the teardown had already run, at each unexpose call.
+        unexposed: RefCell<Vec<bool>>,
+        /// Reads after a removal that still list the schema.
+        stale: usize,
+        pending: Cell<usize>,
+        /// Every wait between two reads.
+        waits: RefCell<Vec<Duration>>,
+        /// Every re-expose call.
+        reexposed: RefCell<Vec<String>>,
+        /// What an unexpose call fails with.
+        refuse: Option<&'static str>,
+        /// What a re-expose call fails with.
+        refuse_expose: Option<&'static str>,
+        /// What a read of the list fails with.
+        unreadable: Option<&'static str>,
+        /// What a read of the list fails with once a removal was accepted.
+        unreadable_after_patch: Option<&'static str>,
+        /// What the teardown script fails with in transit, its outcome unknown.
+        teardown_in_transit: Option<&'static str>,
+    }
+
+    impl Hosted {
+        fn new(db: FakeApplier, exposed: &[&str]) -> Self {
+            Self {
+                db,
+                exposed: RefCell::new(exposed.iter().map(|schema| (*schema).to_owned()).collect()),
+                unexposed: RefCell::new(Vec::new()),
+                stale: 0,
+                pending: Cell::new(0),
+                waits: RefCell::new(Vec::new()),
+                reexposed: RefCell::new(Vec::new()),
+                refuse: None,
+                refuse_expose: None,
+                unreadable: None,
+                unreadable_after_patch: None,
+                teardown_in_transit: None,
+            }
+        }
+
+        /// The statements the run sent that change the database: the
+        /// teardown is the only one, and the reads around it all start with
+        /// `select`.
+        fn writes(&self) -> Vec<String> {
+            self.db
+                .executed
+                .borrow()
+                .iter()
+                .filter(|sql| !sql.trim_start().starts_with("select"))
+                .cloned()
+                .collect()
+        }
+    }
+
+    impl Applier for Hosted {
+        fn run_query(&self, sql: &str) -> Result<Vec<Row>> {
+            if let Some(cause) = self.teardown_in_transit
+                && sql.starts_with(TEARDOWN)
+            {
+                return Err(Error::Transport(cause.to_owned()));
+            }
+
+            self.db.run_query(sql)
+        }
+    }
+
+    impl ExposedSchemas for Hosted {
+        fn exposed_schemas(&self) -> Result<Vec<String>> {
+            if let Some(cause) = self.unreadable {
+                return Err(Error::Transport(cause.to_owned()));
+            }
+            if let Some(cause) = self.unreadable_after_patch
+                && !self.unexposed.borrow().is_empty()
+            {
+                return Err(Error::Transport(cause.to_owned()));
+            }
+            let mut exposed = self.exposed.borrow().clone();
+            if self.pending.get() > 0 {
+                self.pending.set(self.pending.get() - 1);
+                exposed.push(SCHEMA.to_owned());
+            }
+
+            Ok(exposed)
+        }
+
+        fn unexpose_schema(&self, schema: &str) -> Result<UnexposeOutcome> {
+            let torn_down = self
+                .db
+                .executed
+                .borrow()
+                .iter()
+                .any(|sql| sql.starts_with(TEARDOWN));
+            self.unexposed.borrow_mut().push(torn_down);
+            if let Some(cause) = self.refuse {
+                return Err(Error::Transport(cause.to_owned()));
+            }
+            let outcome = unexpose_outcome(&self.exposed.borrow(), schema);
+            if outcome == UnexposeOutcome::Removed {
+                self.exposed.borrow_mut().retain(|entry| entry != schema);
+                self.pending.set(self.stale);
+            }
+
+            Ok(outcome)
+        }
+
+        fn expose_schema(&self, schema: &str) -> Result<ExposeOutcome> {
+            self.reexposed.borrow_mut().push(schema.to_owned());
+            if let Some(cause) = self.refuse_expose {
+                return Err(Error::Transport(cause.to_owned()));
+            }
+            self.exposed.borrow_mut().push(schema.to_owned());
+
+            Ok(ExposeOutcome::Added)
+        }
+
+        fn wait(&self, duration: Duration) {
+            self.waits.borrow_mut().push(duration);
+        }
+    }
+
+    const EXPOSED: [&str; 3] = ["public", "graphql_public", "kizunasync"];
+
+    /// A hosted project whose ledger records a synced `todos`.
+    fn hosted() -> FakeApplier {
+        read_port().answer(
+            "object_args\nfrom kizunasync._provisions",
+            vec![
+                text_row(&[
+                    ("object_kind", "function"),
+                    ("object_name", "kizunasync.reap_tombstones"),
+                ]),
+                text_row(&[("object_kind", "config"), ("object_name", "public.todos")]),
+            ],
+        )
+    }
+
+    fn schema_counts() -> FakeApplier {
+        hosted().answer(
+            "as tables",
+            vec![text_row(&[
+                ("tables", "11"),
+                ("sequences", "1"),
+                ("indexes", "7"),
+                ("functions", "45"),
+            ])],
+        )
+    }
+
+    fn purge_over_the_api() -> DeprovisionRequest<'static> {
+        DeprovisionRequest {
+            yes: true,
+            purge: true,
+            confirm: Some(PROJECT_REF),
+            ..DeprovisionRequest::default()
+        }
+    }
+
+    fn run_api(api: &Hosted, request: &DeprovisionRequest<'_>) -> (i32, Capture) {
+        let (mut ui, capture) = Ui::capture();
+        let code = run_over_api(api, &project_ref(), request, &Env::default(), &mut ui);
+
+        (code, capture)
+    }
+
+    /// The plan is read through the API and applied through it as one
+    /// transaction, never as a migration file: a hosted project has no local
+    /// tree for `supabase db push` to read.
+    #[test]
+    fn over_the_management_api_the_teardown_is_one_transaction_through_the_api() {
+        let api = Hosted::new(hosted(), &EXPOSED);
+        let request = DeprovisionRequest {
+            yes: true,
+            ..DeprovisionRequest::default()
+        };
+        let (code, capture) = run_api(&api, &request);
+        let writes = api.writes();
+
+        assert_eq!(code, OK, "{}", capture.stderr());
+        assert_eq!(writes.len(), 1, "{writes:?}");
+        let script = &writes[0];
+        assert!(
+            script.starts_with("-- Generated by `kizunasync deprovision`."),
+            "{script}"
+        );
+        assert_eq!(script.matches("begin;").count(), 1, "{script}");
+        assert!(script.trim_end().ends_with("commit;"), "{script}");
+        assert!(
+            script.contains("delete from kizunasync._config where table_name = 'todos';"),
+            "{script}"
+        );
+        assert!(!script.contains("do $kizunasync$"), "{script}");
+        assert!(!script.contains("drop schema"), "{script}");
+        assert!(capture.stderr().contains("deprovisioned 2 object(s)."));
+        assert!(!capture.stderr().contains("emitted"));
+    }
+
+    /// A purge over the API is confirmed with the project ref, the word a
+    /// direct connection to the same project is confirmed with.
+    #[test]
+    fn over_the_management_api_a_purge_is_confirmed_with_the_project_ref() {
+        let refused = Hosted::new(schema_counts(), &EXPOSED);
+        let request = DeprovisionRequest {
+            confirm: Some(LOCAL_TARGET),
+            ..purge_over_the_api()
+        };
+        let (code, capture) = run_api(&refused, &request);
+
+        assert_eq!(code, UNUSABLE);
+        assert!(
+            capture
+                .stderr()
+                .contains(&format!("Re-run with --confirm {PROJECT_REF}")),
+            "{}",
+            capture.stderr()
+        );
+        assert_eq!(refused.writes(), Vec::<String>::new());
+        assert!(refused.unexposed.borrow().is_empty());
+
+        let confirmed = Hosted::new(schema_counts(), &EXPOSED);
+        let (code, capture) = run_api(&confirmed, &purge_over_the_api());
+
+        assert_eq!(code, OK, "{}", capture.stderr());
+        let writes = confirmed.writes();
+        assert_eq!(writes.len(), 1, "{writes:?}");
+        assert!(writes[0].contains("drop schema if exists kizunasync cascade;"));
+        assert!(writes[0].trim_end().ends_with("commit;"));
+    }
+
+    /// `--dry-run` over the API prints the plan and sends nothing that writes.
+    #[test]
+    fn over_the_management_api_a_dry_run_writes_nothing() {
+        let api = Hosted::new(hosted(), &EXPOSED);
+        let request = DeprovisionRequest {
+            dry_run: true,
+            ..DeprovisionRequest::default()
+        };
+        let (code, capture) = run_api(&api, &request);
+
+        assert_eq!(code, OK);
+        assert!(
+            capture
+                .stdout()
+                .contains("[config] delete from kizunasync._config")
+        );
+        assert_eq!(api.writes(), Vec::<String>::new());
+    }
+
+    // MARK: - the Data API step
+
+    /// The line of a removal over the Management API that applied.
+    const REMOVED: &str = "  Data API:         removed kizunasync from the exposed schemas";
+
+    /// PostgREST cannot build its schema cache while an exposed schema is
+    /// missing, so the schema leaves the list first, and the purge runs only
+    /// once a read shows it gone.
+    #[test]
+    fn a_purge_over_the_api_unexposes_the_schema_before_the_transaction() {
+        let api = Hosted::new(schema_counts(), &EXPOSED);
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+        let stderr = capture.stderr();
+
+        assert_eq!(code, OK, "{stderr}");
+        assert_eq!(*api.unexposed.borrow(), [false]);
+        assert_eq!(*api.exposed.borrow(), ["public", "graphql_public"]);
+        assert_eq!(api.writes().len(), 1);
+        let removed = stderr.find(REMOVED).unwrap();
+        let purged = stderr.find("purged the kizunasync schema").unwrap();
+        assert!(removed < purged, "{stderr}");
+        assert!(api.reexposed.borrow().is_empty());
+    }
+
+    /// The Management API applies the PATCH later than it answers it: the
+    /// run reads the list every 3 s until the schema is gone.
+    #[test]
+    fn the_purge_waits_for_a_read_that_no_longer_lists_the_schema() {
+        let api = Hosted {
+            stale: 1,
+            ..Hosted::new(schema_counts(), &EXPOSED)
+        };
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+
+        assert_eq!(code, OK, "{}", capture.stderr());
+        assert_eq!(*api.waits.borrow(), [Duration::from_secs(3); 2]);
+        assert_eq!(api.writes().len(), 1);
+    }
+
+    /// A removal no read confirms within 60 s drops nothing: the run says
+    /// the removal was asked for and to run the command again.
+    #[test]
+    fn a_removal_that_never_applies_stops_before_anything_is_dropped() {
+        let api = Hosted {
+            stale: usize::MAX,
+            ..Hosted::new(schema_counts(), &EXPOSED)
+        };
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+        let stderr = capture.stderr();
+
+        assert_eq!(code, FAILURE, "{stderr}");
+        assert!(api.writes().is_empty(), "{:?}", api.writes());
+        assert_eq!(
+            api.waits.borrow().iter().sum::<Duration>(),
+            Duration::from_secs(60)
+        );
+        assert!(
+            stderr.contains("was requested but Supabase has not applied it yet"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("nothing was dropped"), "{stderr}");
+        assert!(stderr.contains("run the same command again"), "{stderr}");
+    }
+
+    /// What the existence check answers after a purge that did not apply.
+    const SCHEMA_PRESENT: &str = "from pg_namespace where nspname = 'kizunasync'";
+
+    /// The script the database refused (a SQL error), which rolled back.
+    fn refused_purge() -> FakeApplier {
+        schema_counts().fail_sql("drop schema if exists", "40P01", "40P01: deadlock detected")
+    }
+
+    /// A purge transaction the database refused puts the schema back in the
+    /// list, and reports either outcome of that.
+    #[test]
+    fn a_failed_purge_exposes_the_schema_again() {
+        for refuse_expose in [
+            None,
+            Some("Supabase Management API PATCH /postgrest failed: 500 boom"),
+        ] {
+            let api = Hosted {
+                refuse_expose,
+                ..Hosted::new(
+                    refused_purge().answer(SCHEMA_PRESENT, vec![text_row(&[("present", "t")])]),
+                    &EXPOSED,
+                )
+            };
+            let (code, capture) = run_api(&api, &purge_over_the_api());
+            let stderr = capture.stderr();
+
+            assert_eq!(code, FAILURE, "{stderr}");
+            assert!(stderr.contains("deadlock detected"), "{stderr}");
+            assert_eq!(*api.reexposed.borrow(), ["kizunasync"]);
+            if refuse_expose.is_some() {
+                assert!(
+                    stderr.contains("could not expose kizunasync again"),
+                    "{stderr}"
+                );
+                assert!(stderr.contains("500 boom"), "{stderr}");
+            } else {
+                assert!(
+                    stderr.contains("  Data API:         exposed kizunasync again, since the purge did not apply"),
+                    "{stderr}"
+                );
+                assert!(api.exposed.borrow().contains(&SCHEMA.to_owned()));
+            }
+        }
+    }
+
+    /// The put-back runs only over a schema that is still there: a schema the
+    /// failed run dropped after all, or one nobody can confirm, stays
+    /// unexposed, and the run says so.
+    #[test]
+    fn the_schema_is_exposed_again_only_while_it_still_exists() {
+        for (present, said) in [
+            (
+                Some("f"),
+                "  Data API:         the kizunasync schema is gone, so kizunasync stays unexposed",
+            ),
+            (
+                None,
+                "could not read whether the kizunasync schema still exists",
+            ),
+        ] {
+            let failing = refused_purge();
+            let db = match present {
+                Some(value) => {
+                    failing.answer(SCHEMA_PRESENT, vec![text_row(&[("present", value)])])
+                }
+                None => failing.fail(SCHEMA_PRESENT, "connection reset"),
+            };
+            let api = Hosted::new(db, &EXPOSED);
+            let (code, capture) = run_api(&api, &purge_over_the_api());
+            let stderr = capture.stderr();
+
+            assert_eq!(code, FAILURE, "{stderr}");
+            assert!(api.reexposed.borrow().is_empty(), "{present:?}");
+            assert!(stderr.contains(said), "{stderr}");
+            if present.is_none() {
+                assert!(stderr.contains("connection reset"), "{stderr}");
+                assert!(stderr.contains("so kizunasync stays unexposed"), "{stderr}");
+            }
+        }
+    }
+
+    /// A teardown that failed without the database refusing it may still
+    /// commit server-side, so the schema is not exposed again: the run says
+    /// how to find out, and how to expose it if it survived.
+    #[test]
+    fn a_purge_with_an_unknown_outcome_leaves_the_schema_unexposed() {
+        let present = || vec![text_row(&[("present", "t")])];
+        for (api, cause) in [
+            (
+                Hosted::new(
+                    schema_counts()
+                        .fail("drop schema if exists", "connection reset by peer")
+                        .answer(SCHEMA_PRESENT, present()),
+                    &EXPOSED,
+                ),
+                "connection reset by peer",
+            ),
+            (
+                Hosted {
+                    teardown_in_transit: Some(
+                        "Supabase Management API POST /database/query failed: timed out",
+                    ),
+                    ..Hosted::new(schema_counts().answer(SCHEMA_PRESENT, present()), &EXPOSED)
+                },
+                "timed out",
+            ),
+        ] {
+            let (code, capture) = run_api(&api, &purge_over_the_api());
+            let stderr = capture.stderr();
+
+            assert_eq!(code, FAILURE, "{stderr}");
+            assert!(api.reexposed.borrow().is_empty(), "{stderr}");
+            assert!(
+                stderr.contains("  Data API:         the purge's outcome is unknown ("),
+                "{stderr}"
+            );
+            assert!(stderr.contains(cause), "{stderr}");
+            assert!(
+                stderr.contains(
+                    "), so kizunasync stays unexposed; run `kizunasync status --project-ref abcdefghijklmnopqrst`: if the schema is still there, `kizunasync init --project-ref abcdefghijklmnopqrst` exposes it again"
+                ),
+                "{stderr}"
+            );
+        }
+    }
+
+    /// A read that fails once the API accepted the removal leaves nothing
+    /// confirmed, so nothing is dropped.
+    #[test]
+    fn a_removal_the_reads_cannot_confirm_stops_before_anything_is_dropped() {
+        let api = Hosted {
+            unreadable_after_patch: Some(
+                "Supabase Management API GET /postgrest failed: 502 bad gateway",
+            ),
+            ..Hosted::new(schema_counts(), &EXPOSED)
+        };
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+        let stderr = capture.stderr();
+
+        assert_eq!(code, FAILURE, "{stderr}");
+        assert!(
+            stderr.contains(
+                "the removal of kizunasync from the exposed schemas was accepted but could not be confirmed (Supabase Management API GET /postgrest failed: 502 bad gateway), so nothing was dropped; run the same command again"
+            ),
+            "{stderr}"
+        );
+        assert_eq!(api.writes(), Vec::<String>::new());
+    }
+
+    /// The Data API cannot run with no exposed schema, so a purge that would
+    /// leave none is refused before anything changes, dry run included.
+    #[test]
+    fn the_only_exposed_schema_refuses_the_purge_before_anything_changes() {
+        for request in [
+            purge_over_the_api(),
+            DeprovisionRequest {
+                dry_run: true,
+                ..purge_over_the_api()
+            },
+        ] {
+            let api = Hosted::new(schema_counts(), &["kizunasync"]);
+            let (code, capture) = run_api(&api, &request);
+            let stderr = capture.stderr();
+
+            assert_eq!(code, UNUSABLE, "{stderr}");
+            assert!(
+                stderr.contains("kizunasync is the only exposed schema of this project"),
+                "{stderr}"
+            );
+            assert_eq!(api.writes(), Vec::<String>::new());
+            assert!(api.unexposed.borrow().is_empty());
+            assert_eq!(capture.stdout(), "");
+        }
+    }
+
+    #[test]
+    fn a_schema_that_is_not_exposed_lets_the_purge_run_with_nothing_to_remove() {
+        let api = Hosted::new(schema_counts(), &["public"]);
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+        let stderr = capture.stderr();
+
+        assert_eq!(code, OK, "{stderr}");
+        assert_eq!(
+            stderr
+                .matches("  Data API:         kizunasync is not exposed")
+                .count(),
+            2,
+            "{stderr}"
+        );
+        assert!(api.waits.borrow().is_empty());
+        assert_eq!(api.writes().len(), 1);
+    }
+
+    /// A removal the API refuses drops nothing.
+    #[test]
+    fn a_refused_removal_stops_before_anything_is_dropped() {
+        let api = Hosted {
+            refuse: Some("Supabase Management API PATCH /postgrest failed: 500 boom"),
+            ..Hosted::new(schema_counts(), &EXPOSED)
+        };
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+        let stderr = capture.stderr();
+
+        assert_eq!(code, FAILURE, "{stderr}");
+        assert!(stderr.contains("500 boom"), "{stderr}");
+        assert!(stderr.contains("nothing was dropped"), "{stderr}");
+        assert_eq!(api.writes(), Vec::<String>::new());
+    }
+
+    /// A plain teardown keeps the schema, so it keeps the schema exposed: the
+    /// Data API is neither read nor written, whatever the flags.
+    #[test]
+    fn a_plain_teardown_never_touches_the_data_api() {
+        for request in [
+            DeprovisionRequest {
+                yes: true,
+                ..DeprovisionRequest::default()
+            },
+            DeprovisionRequest {
+                dry_run: true,
+                ..DeprovisionRequest::default()
+            },
+        ] {
+            let api = Hosted {
+                unreadable: Some("the list must not be read"),
+                ..Hosted::new(hosted(), &EXPOSED)
+            };
+            let (code, capture) = run_api(&api, &request);
+
+            assert_eq!(code, OK, "{request:?}: {}", capture.stderr());
+            assert!(api.unexposed.borrow().is_empty(), "{request:?}");
+            assert_eq!(*api.exposed.borrow(), EXPOSED, "{request:?}");
+            assert!(!capture.stderr().contains("Data API"), "{request:?}");
+        }
+    }
+
+    /// The dry run names the Data API step first, since it runs first.
+    #[test]
+    fn a_purge_dry_run_previews_the_data_api_step_first_and_changes_nothing() {
+        let api = Hosted::new(schema_counts(), &EXPOSED);
+        let request = DeprovisionRequest {
+            dry_run: true,
+            ..purge_over_the_api()
+        };
+        let (code, capture) = run_api(&api, &request);
+        let stderr = capture.stderr();
+
+        assert_eq!(code, OK);
+        let preview = stderr
+            .find("  Data API:         would remove kizunasync from the exposed schemas")
+            .unwrap();
+        let schema = stderr
+            .find("--purge also removes the kizunasync schema")
+            .unwrap();
+        assert!(preview < schema, "{stderr}");
+        assert!(api.unexposed.borrow().is_empty());
+        assert_eq!(api.writes(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_unreadable_exposed_schema_list_refuses_the_purge_before_anything_is_applied() {
+        let api = Hosted {
+            unreadable: Some("Supabase Management API GET /postgrest failed: 403 forbidden"),
+            ..Hosted::new(schema_counts(), &EXPOSED)
+        };
+        let (code, capture) = run_api(&api, &purge_over_the_api());
+        let stderr = capture.stderr();
+
+        assert_eq!(code, UNUSABLE, "{stderr}");
+        assert!(stderr.contains("403 forbidden"), "{stderr}");
+        assert!(stderr.contains("nothing was applied"), "{stderr}");
+        assert_eq!(api.writes(), Vec::<String>::new());
+        assert!(api.unexposed.borrow().is_empty());
+    }
+
+    /// Without a config file there is no list this run can edit: the plan
+    /// warns that the Data API stops serving every schema until the purged
+    /// one leaves the project's list, under `--yes` too.
+    #[test]
+    fn without_a_config_file_a_purge_warns_about_the_exposed_schema() {
+        let recorder = Recorder::new(false);
+        let purge = DeprovisionFlags {
+            yes: true,
+            purge: Some(purge_request(Some(LOCAL_TARGET))),
+            ..DeprovisionFlags::default()
+        };
+        let (code, capture) = drive(
+            &[provision("config", "public.todos")],
+            &purge,
+            &Env::default(),
+            &recorder,
+        );
+        let stderr = capture.stderr();
+
+        assert_eq!(code, OK, "{stderr}");
+        assert_eq!(stderr.matches(BY_HAND).count(), 1, "{stderr}");
+        assert!(stderr.contains("PGRST002"), "{stderr}");
+        assert!(stderr.contains("--project-ref"), "{stderr}");
+
+        let plain = DeprovisionFlags {
+            yes: true,
+            ..DeprovisionFlags::default()
+        };
+        let (_, capture) = drive(
+            &[provision("config", "public.todos")],
+            &plain,
+            &Env::default(),
+            &recorder,
+        );
+
+        assert!(!capture.stderr().contains("Data API"));
+    }
+
+    // MARK: - the Data API step in supabase/config.toml
+
+    /// A Supabase CLI project whose `[api].schemas` reads `config`.
+    fn exposing_project(config: &str) -> (tempfile::TempDir, ProjectPaths) {
+        let project = cli_project();
+        let paths = ProjectPaths::rooted_at(project.path().to_path_buf());
+        std::fs::write(&paths.config_toml, config).unwrap();
+
+        (project, paths)
+    }
+
+    const EXPOSING: &str =
+        "project_id = \"x\"\n\n[api]\nschemas = [\"public\", \"graphql_public\", \"kizunasync\"]\n";
+
+    fn schema_present(value: &str) -> FakeApplier {
+        read_port().answer(SCHEMA_PRESENT, vec![text_row(&[("present", value)])])
+    }
+
+    fn purge_by_migration(
+        paths: &ProjectPaths,
+        flags: &DeprovisionFlags,
+        cli: &RecordingCli,
+    ) -> (i32, Capture) {
+        purge_by_migration_over(paths, flags, cli, &read_port())
+    }
+
+    fn purge_by_migration_over(
+        paths: &ProjectPaths,
+        flags: &DeprovisionFlags,
+        cli: &RecordingCli,
+        read: &FakeApplier,
+    ) -> (i32, Capture) {
+        let history = History::of(recorded(&["20231114221300_kizunasync_init"]));
+
+        purge_by_migration_with(paths, flags, cli, read, &history)
+    }
+
+    fn purge_by_migration_with(
+        paths: &ProjectPaths,
+        flags: &DeprovisionFlags,
+        cli: &RecordingCli,
+        read: &FakeApplier,
+        history: &History,
+    ) -> (i32, Capture) {
+        let direct = DirectConnection {
+            url: "postgresql://postgres:postgres@127.0.0.1:55322/scratch".to_owned(),
+            push: PushTarget::Local,
+        };
+        let delivery = Delivery::Migration(MigrationPush {
+            direct: &direct,
+            paths,
+            schemas: history,
+            supabase: cli,
+            now_unix: 1_700_000_000,
+        });
+        let (mut ui, capture) = Ui::capture();
+        let code = plan_and_apply(
+            &ledgered_table(),
+            flags,
+            &Env::default(),
+            read,
+            &delivery,
+            &Exposure::ConfigToml(&paths.config_toml),
+            &mut ui,
+        );
+
+        (code, capture)
+    }
+
+    fn purge_flags() -> DeprovisionFlags {
+        DeprovisionFlags {
+            yes: true,
+            purge: Some(purge_request(Some(LOCAL_TARGET))),
+            ..DeprovisionFlags::default()
+        }
+    }
+
+    fn failing_push() -> RecordingCli {
+        RecordingCli::answering(
+            crate::supabase_cli::CliResult {
+                ok: false,
+                stderr: "connection refused".to_owned(),
+            },
+            crate::supabase_cli::CliResult {
+                ok: true,
+                stderr: String::new(),
+            },
+        )
+    }
+
+    /// The entry leaves `[api].schemas` before the teardown is pushed, and
+    /// the line says the local stack reads the file at start.
+    #[test]
+    fn a_local_purge_takes_the_schema_out_of_config_toml_before_the_push() {
+        let (_project, paths) = exposing_project(EXPOSING);
+        let cli = RecordingCli::new().snapshotting(&paths.config_toml);
+        let (code, capture) = purge_by_migration(&paths, &purge_flags(), &cli);
+        let stderr = capture.stderr();
+        let unexposed = "project_id = \"x\"\n\n[api]\nschemas = [\"public\", \"graphql_public\"]\n";
+
+        assert_eq!(code, OK, "{stderr}");
+        assert_eq!(*cli.snapshots.borrow(), [unexposed]);
+        assert_eq!(
+            std::fs::read_to_string(&paths.config_toml).unwrap(),
+            unexposed
+        );
+        assert!(
+            stderr.contains(
+                "  Data API:         would remove \"kizunasync\" from [api].schemas in supabase/config.toml"
+            ),
+            "{stderr}"
+        );
+        let removed = stderr
+            .find("  Data API:         removed \"kizunasync\" from [api].schemas in supabase/config.toml")
+            .unwrap();
+        let pushed = stderr.find("applied via supabase db push").unwrap();
+        assert!(removed < pushed, "{stderr}");
+        assert!(
+            stderr.contains("the local stack reads it at start, so restart it (`supabase stop`, then `supabase start`) after the purge"),
+            "{stderr}"
+        );
+    }
+
+    /// A push that fails after the surgery puts the file back byte for byte,
+    /// and says the migration it left drops the schema the file lists again.
+    #[test]
+    fn a_failed_push_puts_config_toml_back() {
+        let (_project, paths) = exposing_project(EXPOSING);
+        let cli = failing_push().snapshotting(&paths.config_toml);
+        let (code, capture) =
+            purge_by_migration_over(&paths, &purge_flags(), &cli, &schema_present("t"));
+        let stderr = capture.stderr();
+
+        assert_eq!(code, FAILURE, "{stderr}");
+        assert!(!cli.snapshots.borrow()[0].contains("kizunasync"));
+        assert_eq!(
+            std::fs::read_to_string(&paths.config_toml).unwrap(),
+            EXPOSING
+        );
+        assert!(
+            stderr.contains(
+                "  Data API:         put supabase/config.toml back, since the purge did not apply"
+            ),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains(
+                "  the migration 20231114221320_kizunasync_deprovision.sql drops the schema while supabase/config.toml lists kizunasync again, so run `kizunasync deprovision --purge` again instead of pushing 20231114221320_kizunasync_deprovision.sql by hand."
+            ),
+            "{stderr}"
+        );
+    }
+
+    /// A push the migration history records, or one the history cannot be
+    /// read about, may have dropped the schema, so the file keeps the entry
+    /// out and the run says how to find out.
+    #[test]
+    fn a_failed_push_that_may_have_applied_leaves_config_toml_without_the_schema() {
+        for unreadable in [false, true] {
+            let (_project, paths) = exposing_project(EXPOSING);
+            let history = History {
+                applied: recorded(&["20231114221300_kizunasync_init"]),
+                after_write: Some((paths.migrations_dir.clone(), unreadable)),
+            };
+            let (code, capture) = purge_by_migration_with(
+                &paths,
+                &purge_flags(),
+                &failing_push(),
+                &schema_present("t"),
+                &history,
+            );
+            let stderr = capture.stderr();
+
+            assert_eq!(code, FAILURE, "{unreadable}: {stderr}");
+            assert!(
+                !std::fs::read_to_string(&paths.config_toml)
+                    .unwrap()
+                    .contains("kizunasync"),
+                "{stderr}"
+            );
+            assert!(
+                stderr.contains("  Data API:         the purge's outcome is unknown ("),
+                "{stderr}"
+            );
+            assert!(
+                stderr.contains(
+                    "), so supabase/config.toml stays without kizunasync; run `kizunasync status`: if the schema is still there, `kizunasync init` exposes it again"
+                ),
+                "{stderr}"
+            );
+        }
+    }
+
+    /// A schema the failed push dropped after all, or one nobody can
+    /// confirm, keeps the file without the entry.
+    #[test]
+    fn config_toml_is_put_back_only_while_the_schema_still_exists() {
+        for (read, said) in [
+            (
+                schema_present("f"),
+                "  Data API:         the kizunasync schema is gone, so kizunasync stays unexposed",
+            ),
+            (
+                read_port().fail(SCHEMA_PRESENT, "connection reset"),
+                "could not read whether the kizunasync schema still exists",
+            ),
+        ] {
+            let (_project, paths) = exposing_project(EXPOSING);
+            let (code, capture) =
+                purge_by_migration_over(&paths, &purge_flags(), &failing_push(), &read);
+            let stderr = capture.stderr();
+
+            assert_eq!(code, FAILURE, "{stderr}");
+            assert!(
+                !std::fs::read_to_string(&paths.config_toml)
+                    .unwrap()
+                    .contains("kizunasync"),
+                "{stderr}"
+            );
+            assert!(stderr.contains(said), "{stderr}");
+        }
+    }
+
+    /// Without a local target the file is never edited: a `--linked` push
+    /// with no token warns instead, and leaves `supabase/config.toml` alone.
+    #[test]
+    fn a_purge_that_warns_never_edits_config_toml() {
+        let (_project, paths) = exposing_project(EXPOSING);
+        let cli = RecordingCli::new().snapshotting(&paths.config_toml);
+        let direct = DirectConnection {
+            url: "postgres://postgres.abcdefghijklmnopqrst:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres".to_owned(),
+            push: PushTarget::Linked,
+        };
+        let history = History::of(recorded(&["20231114221300_kizunasync_init"]));
+        let delivery = Delivery::Migration(MigrationPush {
+            direct: &direct,
+            paths: &paths,
+            schemas: &history,
+            supabase: &cli,
+            now_unix: 1_700_000_000,
+        });
+        let (mut ui, capture) = Ui::capture();
+        let code = plan_and_apply(
+            &ledgered_table(),
+            &purge_flags(),
+            &Env::default(),
+            &read_port(),
+            &delivery,
+            &Exposure::ByHand,
+            &mut ui,
+        );
+        let stderr = capture.stderr();
+
+        assert_eq!(code, OK, "{stderr}");
+        assert_eq!(*cli.snapshots.borrow(), [EXPOSING]);
+        assert_eq!(
+            std::fs::read_to_string(&paths.config_toml).unwrap(),
+            EXPOSING
+        );
+        assert_eq!(stderr.matches(BY_HAND).count(), 1, "{stderr}");
+    }
+
+    /// A dry run and a plain teardown leave the file as it was.
+    #[test]
+    fn config_toml_stays_as_it_was_without_a_purge_to_apply() {
+        for flags in [
+            DeprovisionFlags {
+                dry_run: true,
+                ..purge_flags()
+            },
+            DeprovisionFlags {
+                yes: true,
+                ..DeprovisionFlags::default()
+            },
+        ] {
+            let (_project, paths) = exposing_project(EXPOSING);
+            let (code, capture) = purge_by_migration(&paths, &flags, &RecordingCli::new());
+
+            assert_eq!(code, OK, "{flags:?}: {}", capture.stderr());
+            assert_eq!(
+                std::fs::read_to_string(&paths.config_toml).unwrap(),
+                EXPOSING,
+                "{flags:?}"
+            );
+            assert!(
+                !capture.stderr().contains("Data API:         removed"),
+                "{flags:?}"
+            );
+        }
+    }
+
+    /// The only entry stays, so a purge that would drop its schema is
+    /// refused before anything changes.
+    #[test]
+    fn the_only_entry_in_config_toml_refuses_the_purge() {
+        let only = "[api]\nschemas = [\"kizunasync\"]\n";
+        let (_project, paths) = exposing_project(only);
+        let cli = RecordingCli::new();
+        let (code, capture) = purge_by_migration(&paths, &purge_flags(), &cli);
+        let stderr = capture.stderr();
+
+        assert_eq!(code, UNUSABLE, "{stderr}");
+        assert_eq!(std::fs::read_to_string(&paths.config_toml).unwrap(), only);
+        assert!(cli.pushes.borrow().is_empty());
+        assert!(
+            stderr.contains("kizunasync is the only entry in [api].schemas"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("Nothing was applied."), "{stderr}");
+    }
+
+    #[test]
+    fn an_unparseable_config_toml_is_reported_and_left_alone() {
+        let broken = "[api]\nschemas = [\n  \"kizunasync\",\n";
+        let (_project, paths) = exposing_project(broken);
+        let cli = RecordingCli::new();
+        let (code, capture) = purge_by_migration(&paths, &purge_flags(), &cli);
+        let stderr = capture.stderr();
+
+        assert_eq!(code, OK, "{stderr}");
+        assert_eq!(std::fs::read_to_string(&paths.config_toml).unwrap(), broken);
+        assert!(
+            stderr.contains("  Data API:         supabase/config.toml does not parse"),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains("Remove \"kizunasync\" from [api].schemas by hand"),
+            "{stderr}"
+        );
+    }
+
+    // MARK: - which list a direct connection's purge edits
+
+    const REF: &str = "abcdefghijklmnopqrst";
+
+    fn connection(push: PushTarget) -> DirectConnection {
+        DirectConnection {
+            url: "postgresql://postgres:pw@127.0.0.1:54322/postgres".to_owned(),
+            push,
+        }
+    }
+
+    fn db_url(url: &str) -> DirectConnection {
+        DirectConnection {
+            url: url.to_owned(),
+            push: PushTarget::DbUrl(url.to_owned()),
+        }
+    }
+
+    fn api_target() -> ExposureTarget {
+        ExposureTarget::ManagementApi(ProjectRef::parse(REF).unwrap())
+    }
+
+    /// One row: the connection, the project beside it, the linked ref, whether
+    /// the run holds a token, and the list the purge edits.
+    type Case<'a> = (
+        DirectConnection,
+        &'a ProjectPaths,
+        Option<&'a ProjectRef>,
+        bool,
+        ExposureTarget,
+    );
+
+    fn assert_targets(cases: Vec<Case<'_>>) {
+        for (connection, paths, linked, has_token, expected) in cases {
+            assert_eq!(
+                exposure_target(&connection, paths, linked, has_token),
+                expected,
+                "{} {:?} {linked:?} {has_token}",
+                connection.url,
+                connection.push
+            );
+        }
+    }
+
+    /// The local stack edits `supabase/config.toml` when there is one,
+    /// whatever the token, its own pooler user included; with no file the
+    /// purge warns.
+    #[test]
+    fn the_local_stack_takes_config_toml() {
+        let (_project, with_config) = exposing_project(EXPOSING);
+        let empty = tempfile::tempdir().unwrap();
+        let bare = ProjectPaths::rooted_at(empty.path().to_path_buf());
+        let local_pooler = "postgres://postgres.pooler-dev:postgres@127.0.0.1:54329/postgres";
+        let config = ExposureTarget::ConfigToml;
+        assert_targets(vec![
+            (
+                connection(PushTarget::Local),
+                &with_config,
+                None,
+                true,
+                config.clone(),
+            ),
+            (
+                connection(PushTarget::Local),
+                &bare,
+                None,
+                true,
+                ExposureTarget::ByHand,
+            ),
+            (
+                db_url("postgresql://postgres:pw@localhost:54322/postgres"),
+                &with_config,
+                None,
+                true,
+                config.clone(),
+            ),
+            (
+                db_url("postgresql://postgres:pw@127.0.0.1:54322/postgres"),
+                &with_config,
+                None,
+                false,
+                config.clone(),
+            ),
+            (
+                db_url("postgresql://postgres:pw@[::1]:54322/postgres"),
+                &with_config,
+                None,
+                false,
+                config.clone(),
+            ),
+            (db_url(local_pooler), &with_config, None, true, config),
+        ]);
+    }
+
+    /// A hosted project, reached by its host, its pooler user (a tunnel
+    /// included), or `--linked`, goes through the Management API when a token
+    /// and a ref reach it, and warns otherwise: a local file never stands in
+    /// for its settings.
+    #[test]
+    fn a_hosted_project_takes_the_management_api_with_a_token() {
+        let (_project, with_config) = exposing_project(EXPOSING);
+        let linked = ProjectRef::parse(REF).unwrap();
+        let hosted = format!("postgresql://postgres:pw@db.{REF}.supabase.co:5432/postgres");
+        let pooler = format!(
+            "postgres://postgres.{REF}:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
+        );
+        let tunnel = format!("postgres://postgres.{REF}:pw@127.0.0.1:6543/postgres");
+        let elsewhere = "postgresql://postgres:pw@db.example.com:5432/postgres";
+        let by_hand = ExposureTarget::ByHand;
+        assert_targets(vec![
+            (db_url(&hosted), &with_config, None, true, api_target()),
+            (db_url(&hosted), &with_config, None, false, by_hand.clone()),
+            (db_url(&pooler), &with_config, None, true, api_target()),
+            (db_url(&tunnel), &with_config, None, true, api_target()),
+            (db_url(elsewhere), &with_config, None, true, by_hand.clone()),
+            (
+                connection(PushTarget::Linked),
+                &with_config,
+                Some(&linked),
+                true,
+                api_target(),
+            ),
+            (
+                connection(PushTarget::Linked),
+                &with_config,
+                Some(&linked),
+                false,
+                by_hand.clone(),
+            ),
+            (
+                connection(PushTarget::Linked),
+                &with_config,
+                None,
+                true,
+                by_hand,
+            ),
+        ]);
     }
 }

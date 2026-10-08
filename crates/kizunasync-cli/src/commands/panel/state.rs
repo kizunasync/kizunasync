@@ -16,16 +16,6 @@ use crate::provision::{DriftReason, LedgerRow, PACK_FILE_KIND, Plan, ledger_newe
 use crate::version::Version;
 use crate::wizard_theme::wrap_at;
 
-/// How the panel reaches the database, which decides what it can run there.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Transport {
-    /// A direct Postgres connection: every command runs.
-    Direct,
-    /// The Supabase Management API: `jobs` and `deprovision` take a direct
-    /// connection, so their items say so instead of running.
-    ManagementApi,
-}
-
 /// Where the installed pack stands against the one this CLI ships.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PackState {
@@ -113,8 +103,6 @@ pub(crate) struct SyncedTable {
 pub(crate) struct PanelState {
     /// The connection, as the header names it.
     pub(crate) title: String,
-    /// How the panel reaches the database.
-    pub(crate) transport: Transport,
     /// The pack against this CLI's.
     pub(crate) pack: PackState,
     /// The newest version a `pack-file` row records.
@@ -133,8 +121,6 @@ pub(crate) struct PanelState {
 pub(crate) struct PanelReads<'a> {
     /// The connection, as the header names it.
     pub(crate) title: String,
-    /// How the panel reaches the database.
-    pub(crate) transport: Transport,
     /// `status::build_report` over the connection.
     pub(crate) report: &'a StatusReport,
     /// The ledger rows.
@@ -155,7 +141,6 @@ impl PanelState {
     pub(crate) fn from_reads(reads: &PanelReads<'_>) -> Self {
         Self {
             title: reads.title.clone(),
-            transport: reads.transport,
             pack: pack_state(reads.rows, reads.plan),
             pack_version: recorded_version(reads.rows),
             tables: reads

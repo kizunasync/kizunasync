@@ -3,13 +3,14 @@ import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { RevealOnScroll } from '@/components/motion/reveal-on-scroll'
 import { FeedbackForm } from '@/components/feedback/feedback-form'
+import { pageMetadata } from '@/lib/page-metadata'
 import { GITHUB_URL } from '@/lib/site'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Feedback',
-  description:
- 'Report a bug, ask a question, or send feedback on Kizuna Sync, read by the people building it.',
-}
+  description: 'Report a bug, ask a question, or send feedback on Kizuna Sync, read by the people building it.',
+  path: '/feedback',
+})
 
 export default function FeedbackPage() {
   return (

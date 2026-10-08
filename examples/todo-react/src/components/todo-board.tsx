@@ -25,6 +25,7 @@ import { useAccountSwitch } from './todo-board/use-account-switch'
 import { useBoardActions } from './todo-board/use-board-actions'
 import { useBoardFilter } from './todo-board/use-board-filter'
 import { useEditTodo } from './todo-board/use-edit-todo'
+import { useIdentityRecovery } from './todo-board/use-identity-recovery'
 import { usePendingWrites } from './todo-board/use-pending-writes'
 import { useStatusNote } from './todo-board/use-status-note'
 import { useTodoComposer } from './todo-board/use-todo-composer'
@@ -40,7 +41,7 @@ export function TodoBoard({ client }: { client: IKizunaSyncShim }) {
     { deps: [boardOrder.orderBy, boardOrder.ascending] },
   )
   const { mutate, error: writeError } = useMutation()
-  const { outboxDepth, isSyncing, isOnline, lastError, needsReset, health, syncNow } = useSyncStatus()
+  const { outboxDepth, isSyncing, isOnline, lastError, needsReset, softBlockReason, health, syncNow } = useSyncStatus()
 
   const [message, setMessage] = useState<string | null>(null)
   const [firstLoadPending, setFirstLoadPending] = useState(true)
@@ -54,6 +55,8 @@ export function TodoBoard({ client }: { client: IKizunaSyncShim }) {
       onMessage: setMessage,
       onFirstLoadPending: setFirstLoadPending,
     })
+
+  useIdentityRecovery({ client, syncNow, onMessage: setMessage })
   const pendingWrites = usePendingWrites(client, outboxDepth)
   const rows = data.map(toTodo)
   const { statusFilter, setStatusFilter, search, setSearch, todos, visibleTodos } = useBoardFilter({
@@ -81,6 +84,7 @@ export function TodoBoard({ client }: { client: IKizunaSyncShim }) {
     <div className="column">
       <ResetBanner
         needsReset={needsReset}
+        softBlockReason={softBlockReason}
         outboxDepth={pendingWrites}
         isResetting={isResetting}
         onReset={() => void rebuildLocalDatabase()}

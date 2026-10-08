@@ -39,23 +39,29 @@
 //! offered the direct connections: the ledger state already read stands.
 
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::applier::Applier;
 use crate::catalog::SchemaSource;
+use crate::commands::deprovision::{self, ExposureTarget};
 use crate::commands::init::{
     self, DirectChoice, DirectConnection, InitFlags, InitPorts, WizardConnection,
 };
-use crate::commands::panel::{self, PanelContext, PanelPorts};
+use crate::commands::panel::{self, Opened, PanelContext, PanelPorts};
 use crate::commands::{OK, UNUSABLE, sync};
 use crate::config::{KizunaSyncConfig, load_config_from_db};
 use crate::discovery::{self, ConnectionCandidate};
 use crate::env::Env;
 use crate::env_file::EnvFileValues;
 use crate::error::Result;
-use crate::management::{ManagementApi, ReqwestTransport, redact_access_token};
+use crate::management::{
+    ExposeOutcome, ExposedSchemas, ManagementApi, ReqwestTransport, UnexposeOutcome,
+    redact_access_token, resolve_access_token,
+};
 use crate::pg::PgApplier;
 use crate::prompts::{BackKey, PromptError, Prompter};
 use crate::provision::{LedgerState, read_ledger_state};
+use crate::token::ACCESS_TOKEN_ENV;
 use crate::ui::Ui;
 use crate::workdir::ProjectPaths;
 
@@ -274,6 +280,103 @@ pub fn open_applier(connection: &WizardConnection) -> Result<Box<dyn Applier>> {
             project_ref,
             None,
         ))),
+    }
+}
+
+/// The production panel opener: the applier the connection names, and the
+/// exposed-schema list a purge edits through the Management API. A project
+/// picked through the API shares one client between the two. A direct
+/// connection to a hosted project gets a client of its own when a token
+/// (`SUPABASE_ACCESS_TOKEN`) and the project's ref reach it
+/// ([`deprovision::exposure_target`]).
+///
+/// # Errors
+/// Returns the transport's own failure when the Management API client cannot
+/// be built.
+pub fn open_panel(
+    connection: &WizardConnection,
+    paths: &ProjectPaths,
+    env: &Env,
+    env_files: &EnvFileValues,
+) -> Result<Opened> {
+    let direct = match connection {
+        WizardConnection::Direct(direct) => direct,
+        WizardConnection::Remote {
+            project_ref,
+            credential,
+        } => {
+            let api = Rc::new(ManagementApi::new(
+                ReqwestTransport::new()?,
+                &credential.token,
+                project_ref,
+                None,
+            ));
+
+            return Ok(Opened {
+                applier: Box::new(SharedApi(Rc::clone(&api))),
+                exposure: Some((project_ref.clone(), Box::new(SharedApi(api)))),
+                warning: None,
+            });
+        }
+    };
+    let linked = discovery::linked_project_ref(paths, env, env_files)
+        .ok()
+        .flatten()
+        .map(|(project_ref, _)| project_ref);
+    let hosted = matches!(
+        deprovision::exposure_target(direct, paths, linked.as_ref(), true),
+        ExposureTarget::ManagementApi(_)
+    );
+    // The CLI's own line for a token the environment holds that is not one,
+    // said only where a hosted target would have used it.
+    let (token, warning) = match resolve_access_token(None, env) {
+        Ok(token) => (Some(token), None),
+        Err(cause) if hosted && env.get(ACCESS_TOKEN_ENV).is_some() => {
+            (None, Some(format!("  {cause}")))
+        }
+        Err(_) => (None, None),
+    };
+    let target = deprovision::exposure_target(direct, paths, linked.as_ref(), token.is_some());
+    let exposure = match (target, token) {
+        (ExposureTarget::ManagementApi(project_ref), Some(token)) => {
+            ReqwestTransport::new().ok().map(|http| {
+                let api = ManagementApi::new(http, &token.token, &project_ref, None);
+
+                (project_ref, Box::new(api) as Box<dyn ExposedSchemas>)
+            })
+        }
+        (ExposureTarget::ManagementApi(_), None)
+        | (ExposureTarget::ConfigToml | ExposureTarget::ByHand, _) => None,
+    };
+
+    Ok(Opened {
+        applier: open_applier(connection)?,
+        exposure,
+        warning,
+    })
+}
+
+/// One Management API client the panel's applier and its exposed-schema list
+/// share.
+struct SharedApi(Rc<ManagementApi<ReqwestTransport>>);
+
+impl Applier for SharedApi {
+    fn run_query(&self, sql: &str) -> Result<Vec<crate::row::Row>> {
+        self.0.run_query(sql)
+    }
+}
+
+impl ExposedSchemas for SharedApi {
+    fn exposed_schemas(&self) -> Result<Vec<String>> {
+        self.0.exposed_schemas()
+    }
+
+    fn unexpose_schema(&self, schema: &str) -> Result<UnexposeOutcome> {
+        self.0.unexpose_schema(schema)
+    }
+
+    fn expose_schema(&self, schema: &str) -> Result<ExposeOutcome> {
+        self.0.expose_schema(schema)
     }
 }
 
@@ -1803,5 +1906,49 @@ mod tests {
                 .stderr()
                 .contains("provisioning Kizuna into this project")
         );
+    }
+
+    // MARK: - the panel opener
+
+    /// An environment token that is not one is dropped with the CLI's own
+    /// one-line warning, and only where a hosted target would have used it.
+    #[test]
+    fn the_panel_opener_warns_once_about_an_environment_token_it_drops() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ProjectPaths::rooted_at(dir.path().to_path_buf());
+        let env = Env::from_pairs(&[("SUPABASE_ACCESS_TOKEN", "eyJhbGciOiJIUzI1NiJ9.e30.x")]);
+        let env_files = crate::env_file::load(dir.path());
+        let direct = |url: &str| {
+            WizardConnection::Direct(DirectConnection {
+                url: url.to_owned(),
+                push: PushTarget::DbUrl(url.to_owned()),
+            })
+        };
+        for (connection, warned) in [
+            (
+                direct(
+                    "postgresql://postgres:pw@db.abcdefghijklmnopqrst.supabase.co:5432/postgres",
+                ),
+                true,
+            ),
+            (
+                direct("postgresql://postgres:pw@127.0.0.1:54322/postgres"),
+                false,
+            ),
+        ] {
+            let opened = open_panel(&connection, &paths, &env, &env_files).unwrap();
+
+            assert!(opened.exposure.is_none());
+            assert_eq!(
+                opened
+                    .warning
+                    .as_deref()
+                    .is_some_and(|warning| warning
+                        .starts_with("  that is not a Personal Access Token (sbp_…)")),
+                warned,
+                "{:?}",
+                opened.warning
+            );
+        }
     }
 }

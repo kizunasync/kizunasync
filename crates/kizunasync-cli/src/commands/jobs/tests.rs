@@ -59,10 +59,29 @@ fn no_pg_cron() -> FakeApplier {
 }
 
 fn drive(action: JobsAction, applier: &FakeApplier, json: bool) -> (i32, Capture) {
+    drive_with(
+        action,
+        applier,
+        JobsFlags {
+            json,
+            ..JobsFlags::default()
+        },
+    )
+}
+
+fn drive_with(action: JobsAction, applier: &FakeApplier, flags: JobsFlags) -> (i32, Capture) {
     let (mut ui, capture) = Ui::capture();
-    let code = run(action, &JobsFlags { json }, applier, &mut ui);
+    let code = run(action, &flags, applier, &mut ui);
 
     (code, capture)
+}
+
+/// The flags of a run over the Management API.
+fn over_the_api(json: bool) -> JobsFlags {
+    JobsFlags {
+        json,
+        management_api: true,
+    }
 }
 
 #[test]
@@ -426,4 +445,141 @@ fn every_line_of_a_human_run_stays_off_stdout() {
     let (_, capture) = drive(JobsAction::Run(Job::Reap), &applier, false);
 
     assert_eq!(capture.stdout(), "");
+}
+
+// MARK: - over the Management API
+
+/// The same database as [`scheduled`], answering the way the Management API
+/// does: JSON booleans, and `null` for a run column a job never filled.
+fn scheduled_over_the_api() -> FakeApplier {
+    let job = |name: &str, schedule: &str, last: Option<&str>| {
+        row(&[
+            ("jobname", Value::from(name)),
+            ("schedule", Value::from(schedule)),
+            ("active", Value::Bool(true)),
+            ("last_start", last.map_or(Value::Null, Value::from)),
+            (
+                "last_status",
+                last.map_or(Value::Null, |_| Value::from("succeeded")),
+            ),
+            (
+                "last_message",
+                last.map_or(Value::Null, |_| Value::from("")),
+            ),
+        ])
+    };
+
+    FakeApplier::new()
+        .answer(PG_CRON_PROBE, vec![row(&[("present", Value::Bool(true))])])
+        .answer(SETTINGS, settings_row())
+        .answer(
+            CRON_JOBS,
+            vec![
+                job(
+                    "kizunasync-compact-changelog",
+                    "47 3 * * *",
+                    Some("2026-09-11 03:47:00.101+00"),
+                ),
+                job("kizunasync-prune-clients", "31 3 * * *", None),
+                job(
+                    "kizunasync-reap-tombstones",
+                    "16 3 * * *",
+                    Some("2026-09-11 03:16:00.007+00"),
+                ),
+            ],
+        )
+}
+
+#[test]
+fn list_over_the_management_api_reads_the_same_report() {
+    let (code, capture) = drive_with(
+        JobsAction::List,
+        &scheduled_over_the_api(),
+        over_the_api(true),
+    );
+    let payload: Value = serde_json::from_str(capture.stdout().trim()).unwrap();
+
+    assert_eq!(code, OK, "{}", capture.stderr());
+    assert_eq!(payload["pgCron"], true);
+    assert_eq!(payload["jobs"][0]["name"], "kizunasync-reap-tombstones");
+    assert_eq!(payload["jobs"][0]["schedule"], "16 3 * * *");
+    assert_eq!(payload["jobs"][0]["active"], true);
+    assert_eq!(payload["jobs"][0]["drift"], false);
+    assert_eq!(payload["jobs"][2]["name"], "kizunasync-prune-clients");
+    assert!(payload["jobs"][2].get("lastStart").is_none());
+}
+
+/// The Management API runs SQL as its own role, which may lack a privilege
+/// on the `cron` schema a direct connection holds: the refusal is printed as
+/// the transport gave it, then one line names the same command over a direct
+/// connection.
+#[test]
+fn a_cron_privilege_refusal_over_the_management_api_names_a_direct_connection() {
+    let refusal = "Supabase Management API POST /database/query failed: 400 ERROR:  42501: permission denied for schema cron";
+    for (action, needle, command) in [
+        (JobsAction::List, CRON_JOBS, "jobs list"),
+        (JobsAction::Schedule, SCHEDULE_CALL, "jobs schedule"),
+    ] {
+        let applier = FakeApplier::new()
+            .answer(PG_CRON_PROBE, vec![row(&[("present", Value::Bool(true))])])
+            .answer(SETTINGS, settings_row())
+            .fail_sql(needle, "42501", refusal);
+        let (code, capture) = drive_with(action, &applier, over_the_api(false));
+        let stderr = capture.stderr();
+
+        assert_eq!(code, UNUSABLE, "{action:?}");
+        assert!(stderr.contains(refusal), "{action:?}: {stderr}");
+        assert!(
+            stderr.contains(&format!(
+                "PGPASSWORD=… kizunasync {command} --db-url <the project's connection string>"
+            )),
+            "{action:?}: {stderr}"
+        );
+        assert_eq!(
+            stderr
+                .lines()
+                .filter(|line| line.contains("--db-url"))
+                .count(),
+            1,
+            "{action:?}: {stderr}"
+        );
+        assert_eq!(capture.stdout(), "", "{action:?}");
+    }
+}
+
+/// Over a direct connection, or for any refusal but a privilege, the error
+/// stands alone.
+#[test]
+fn only_a_privilege_refusal_over_the_management_api_carries_the_hint() {
+    let privilege = || {
+        FakeApplier::new()
+            .answer(PG_CRON_PROBE, vec![text_row(&[("present", "t")])])
+            .answer(SETTINGS, settings_row())
+            .fail_sql(
+                CRON_JOBS,
+                "42501",
+                "42501: permission denied for schema cron",
+            )
+    };
+    let missing = FakeApplier::new()
+        .answer(PG_CRON_PROBE, vec![text_row(&[("present", "t")])])
+        .answer(SETTINGS, settings_row())
+        .fail_sql(
+            CRON_JOBS,
+            "42P01",
+            "42P01: relation \"cron.job\" does not exist",
+        );
+    for (applier, flags) in [
+        (privilege(), JobsFlags::default()),
+        (missing, over_the_api(false)),
+    ] {
+        let (code, capture) = drive_with(JobsAction::List, &applier, flags);
+
+        assert_eq!(code, UNUSABLE);
+        assert!(
+            !capture.stderr().contains("--db-url"),
+            "{}",
+            capture.stderr()
+        );
+    }
 }

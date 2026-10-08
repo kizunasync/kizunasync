@@ -32,8 +32,8 @@
 │  ○ Update the pack        up to date · re-apply to restore dropped objects
 │  ○ Health check           run every doctor check
 │  ○ Status                 full report
-│  ○ Background jobs        unavailable over the Management API: needs a direct Postgres connection
+│  ○ Background jobs        list, run now, reschedule
 │  ○ Pending migrations     classify additive vs breaking
-│  ○ Remove Kizuna          unavailable over the Management API: needs a direct Postgres connection
+│  ○ Remove Kizuna          deprovision, with a dry run first
 │  ○ Exit
 └

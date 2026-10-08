@@ -54,7 +54,39 @@ impl Error {
     pub(crate) fn is_undefined_column_or_table(&self) -> bool {
         matches!(self, Self::Sql { sqlstate, .. } if matches!(sqlstate.as_str(), "42703" | "42P01"))
     }
+
+    /// Whether the database refused a statement because the role running it
+    /// lacks a privilege (42501).
+    #[must_use]
+    pub(crate) fn is_insufficient_privilege(&self) -> bool {
+        matches!(self, Self::Sql { sqlstate, .. } if sqlstate == "42501")
+    }
 }
 
 /// Result alias for the command surface.
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn refused(sqlstate: &str) -> Error {
+        Error::Sql {
+            sqlstate: sqlstate.to_owned(),
+            text: format!("{sqlstate}: refused"),
+        }
+    }
+
+    /// Only the SQLSTATE decides: a message that merely mentions a privilege
+    /// is not one.
+    #[test]
+    fn only_a_42501_refusal_is_an_insufficient_privilege() {
+        assert!(refused("42501").is_insufficient_privilege());
+        assert!(!refused("42P01").is_insufficient_privilege());
+        assert!(
+            !Error::Db("42501: permission denied for schema cron".to_owned())
+                .is_insufficient_privilege()
+        );
+        assert!(!Error::Transport("permission denied".to_owned()).is_insufficient_privilege());
+    }
+}

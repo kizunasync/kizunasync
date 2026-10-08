@@ -14,6 +14,9 @@ export const TAGLINE = 'Offline-first sync for Supabase'
 export const DESCRIPTION =
   'Kizuna is offline-first sync for Supabase: rows and media, provisioned into the project you own. Its clients use SQL in your project; no Kizuna-operated service sits in the data path.'
 
+/** Alt text of the root share image (app/opengraph-image.tsx), which pages without their own image fall back to. */
+export const SHARE_IMAGE_ALT = 'Kizuna Sync: offline-first sync for Supabase'
+
 /**
  * Freshness signals for JSON-LD (schema.org accepts date-only ISO).
  * SITE_MODIFIED is computed at build time in next.config.ts from the latest
@@ -39,5 +42,4 @@ export function kizunasyncCommand(pm: TPackageManager, args = ''): string {
   return args.length === 0 ? runner : `${runner} ${args}`
 }
 
-export const HERO_CLI_ARGS = 'init'
 export const INIT_PREVIEW_ARGS = 'init --dry-run'

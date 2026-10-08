@@ -19,8 +19,8 @@
 //! read, the way every writing command refuses such a ledger. A pack that
 //! differs from this CLI's opens every menu on "Update the pack", and each
 //! item that writes passes the pack gate first. Once a re-apply fails over
-//! tables an earlier build of the pack created, the menus of a direct
-//! connection open on "Remove Kizuna" instead (@docs/cli/cli.md).
+//! tables an earlier build of the pack created, the menus open on "Remove
+//! Kizuna" instead, over either transport (@docs/cli/cli.md).
 
 use std::cell::Cell;
 use std::path::Path;
@@ -34,7 +34,9 @@ use crate::commands::{OK, UNUSABLE};
 use crate::db::split_db_url_password;
 use crate::env::Env;
 use crate::env_file::EnvFileValues;
+use crate::management::ExposedSchemas;
 use crate::pack::{read_pack_files, resolve_pack_dir};
+use crate::project_ref::ProjectRef;
 use crate::prompts::{BackKey, PromptError, Prompter};
 use crate::provision::{LedgerRow, Plan, plan_provision, read_ledger_rows};
 use crate::supabase_cli::PushTarget;
@@ -64,12 +66,25 @@ pub use menu::{PanelAction, PanelItem};
 use actions::Outcome;
 use lent::Lent;
 use menu::{MENU_MESSAGE, panel_menu};
-use state::{PackState, PanelReads, PanelState, Transport, header};
+use state::{PackState, PanelReads, PanelState, header};
 
 // MARK: - ports
 
-/// Opens the applier every panel action reads and writes through.
-pub type Opener<'a> = dyn Fn(&WizardConnection) -> crate::error::Result<Box<dyn Applier>> + 'a;
+/// What the panel opens a connection into.
+pub struct Opened {
+    /// The applier every panel action reads and writes through.
+    pub applier: Box<dyn Applier>,
+    /// The hosted project a purge takes `kizunasync` out of the exposed
+    /// schemas of, through the Management API, and that list; `None` when no
+    /// project is reachable that way.
+    pub exposure: Option<(ProjectRef, Box<dyn ExposedSchemas>)>,
+    /// A line the panel prints as it opens: the environment's token, which a
+    /// hosted target would have used, is not one.
+    pub warning: Option<String>,
+}
+
+/// Opens the connection every panel action reads and writes through.
+pub type Opener<'a> = dyn Fn(&WizardConnection) -> crate::error::Result<Opened> + 'a;
 
 /// What the panel reaches beyond the bare flow's own ports.
 pub struct PanelPorts<'a> {
@@ -108,6 +123,7 @@ pub(crate) struct Panel<'p> {
     connection: &'p WizardConnection,
     context: &'p PanelContext<'p>,
     applier: &'p dyn Applier,
+    exposure: Option<(&'p ProjectRef, &'p dyn ExposedSchemas)>,
     state: PanelState,
     report: StatusReport,
     /// The ledger rows the round read.
@@ -146,8 +162,8 @@ pub(crate) fn run(
     ports: &mut SmartPorts<'_>,
     ui: &mut Ui,
 ) -> i32 {
-    let applier = match (ports.panel.open)(connection) {
-        Ok(applier) => applier,
+    let opened = match (ports.panel.open)(connection) {
+        Ok(opened) => opened,
         Err(cause) => {
             ui.error(&format!(
                 "  {}",
@@ -157,6 +173,9 @@ pub(crate) fn run(
             return UNUSABLE;
         }
     };
+    if let Some(warning) = &opened.warning {
+        ui.warn(warning);
+    }
     let Some(inner) = ports.init.prompter.take() else {
         return stop_for(&PromptError::NotInteractive, ui);
     };
@@ -167,7 +186,7 @@ pub(crate) fn run(
         drive(
             connection,
             context,
-            applier.as_ref(),
+            &opened,
             &mut lent_ports,
             &cancelled,
             ui,
@@ -211,19 +230,19 @@ pub(crate) fn run(
 fn drive(
     connection: &WizardConnection,
     context: &PanelContext<'_>,
-    applier: &dyn Applier,
+    opened: &Opened,
     ports: &mut SmartPorts<'_>,
     cancelled: &Cell<bool>,
     ui: &mut Ui,
 ) -> Ending {
-    let (title, transport) = describe(connection);
+    let title = describe(connection);
     let mut last = None;
     let mut back = context.menu_back;
     let mut earlier_build = false;
     loop {
         let now = (ports.panel.clock)();
         ports.init.now_unix = now;
-        let panel = match read_round(connection, context, applier, &title, transport, now) {
+        let panel = match read_round(connection, context, opened, &title, now) {
             Ok(panel) => panel,
             Err(cause) => {
                 ui.error(&format!(
@@ -278,9 +297,7 @@ fn drive(
                 print_equivalent(connection, &args, ui);
             }
             Outcome::Ran(args) => print_equivalent(connection, &args, ui),
-            // Remove Kizuna needs a direct connection, so a Management API
-            // panel keeps opening on Update the pack.
-            Outcome::EarlierBuild => earlier_build = transport == Transport::Direct,
+            Outcome::EarlierBuild => earlier_build = true,
             Outcome::Nothing | Outcome::Reapplied(_) => {}
             Outcome::Exit => return Ending::Exit,
             Outcome::Cancelled => return Ending::Cancelled,
@@ -302,11 +319,11 @@ fn print_equivalent(connection: &WizardConnection, args: &[String], ui: &mut Ui)
 fn read_round<'p>(
     connection: &'p WizardConnection,
     context: &'p PanelContext<'p>,
-    applier: &'p dyn Applier,
+    opened: &'p Opened,
     title: &str,
-    transport: Transport,
     now_unix: i64,
 ) -> crate::error::Result<Panel<'p>> {
+    let applier = opened.applier.as_ref();
     let report = build_report(applier, context.paths, context.env)?;
     let rows = read_ledger_rows(applier)?;
     let plan = match resolve_pack_dir(context.env) {
@@ -315,7 +332,6 @@ fn read_round<'p>(
     };
     let state = PanelState::from_reads(&PanelReads {
         title: title.to_owned(),
-        transport,
         report: &report,
         rows: &rows,
         plan: plan.as_ref(),
@@ -327,6 +343,10 @@ fn read_round<'p>(
         connection,
         context,
         applier,
+        exposure: opened
+            .exposure
+            .as_ref()
+            .map(|(project_ref, api)| (project_ref, api.as_ref())),
         state,
         report,
         rows,
@@ -334,22 +354,17 @@ fn read_round<'p>(
     })
 }
 
-/// The connection as the header names it, and how it reaches the database.
-fn describe(connection: &WizardConnection) -> (String, Transport) {
+/// The connection as the header names it.
+fn describe(connection: &WizardConnection) -> String {
     match connection {
-        WizardConnection::Direct(direct) => {
-            let title = match &direct.push {
-                PushTarget::Local => "local stack".to_owned(),
-                PushTarget::Linked => "linked project".to_owned(),
-                PushTarget::DbUrl(_) => split_db_url_password(&direct.url).0,
-            };
-
-            (title, Transport::Direct)
+        WizardConnection::Direct(direct) => match &direct.push {
+            PushTarget::Local => "local stack".to_owned(),
+            PushTarget::Linked => "linked project".to_owned(),
+            PushTarget::DbUrl(_) => split_db_url_password(&direct.url).0,
+        },
+        WizardConnection::Remote { project_ref, .. } => {
+            format!("project {project_ref} · Management API")
         }
-        WizardConnection::Remote { project_ref, .. } => (
-            format!("project {project_ref} · Management API"),
-            Transport::ManagementApi,
-        ),
     }
 }
 

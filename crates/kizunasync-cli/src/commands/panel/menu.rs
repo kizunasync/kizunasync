@@ -3,7 +3,7 @@
 
 use crate::commands::jobs::Job;
 
-use super::state::{PackState, PanelState, Transport};
+use super::state::{PackState, PanelState};
 
 /// Everything the panel does: its own menu, then the background jobs submenu
 /// and the job it runs.
@@ -109,10 +109,6 @@ pub(crate) const JOBS_MESSAGE: &str = "Background jobs";
 /// The job picker's question.
 pub(crate) const JOB_MESSAGE: &str = "Which job?";
 
-/// Why `jobs` and `deprovision` do not run over the Management API.
-pub(crate) const NEEDS_DIRECT: &str =
-    "unavailable over the Management API: needs a direct Postgres connection";
-
 /// The panel's menu for `state`. A pack a newer kizunasync recorded leaves
 /// the items that only read.
 pub(crate) fn panel_menu(state: &PanelState) -> Vec<PanelItem> {
@@ -127,10 +123,6 @@ pub(crate) fn panel_menu(state: &PanelState) -> Vec<PanelItem> {
         .collect();
     }
 
-    let direct_only = |hint: &str| match state.transport {
-        Transport::Direct => hint.to_owned(),
-        Transport::ManagementApi => NEEDS_DIRECT.to_owned(),
-    };
     let mut items = vec![
         PanelItem::new(
             PanelAction::SyncedTables,
@@ -143,10 +135,7 @@ pub(crate) fn panel_menu(state: &PanelState) -> Vec<PanelItem> {
         PanelItem::new(PanelAction::UpdatePack, &update_hint(state.pack)),
         PanelItem::new(PanelAction::HealthCheck, "run every doctor check"),
         PanelItem::new(PanelAction::Status, "full report"),
-        PanelItem::new(
-            PanelAction::BackgroundJobs,
-            &direct_only("list, run now, reschedule"),
-        ),
+        PanelItem::new(PanelAction::BackgroundJobs, "list, run now, reschedule"),
     ];
     if state.has_migrations {
         items.push(PanelItem::new(
@@ -156,7 +145,7 @@ pub(crate) fn panel_menu(state: &PanelState) -> Vec<PanelItem> {
     }
     items.push(PanelItem::new(
         PanelAction::RemoveKizuna,
-        &direct_only("deprovision, with a dry run first"),
+        "deprovision, with a dry run first",
     ));
     items.push(PanelItem::new(PanelAction::Exit, ""));
 
