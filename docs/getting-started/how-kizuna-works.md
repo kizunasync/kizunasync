@@ -125,3 +125,4 @@ Swift and Kotlin apps use `KizunaSyncClient` over UniFFI rather than `createKizu
 - [Architecture](../resources/architecture.md): kernel, SQL pack, and what deliberately does not exist.
 - [Repository layout](../resources/repository-layout.md): where each package and crate lives.
 - [Protocol overview](../sync/protocol-overview.md): pull, push, verdicts, and cursors on the wire.
+- [Comparison with alternatives](../resources/comparison-with-alternatives.md): Kizuna next to PowerSync, Electric, Firestore, and others.

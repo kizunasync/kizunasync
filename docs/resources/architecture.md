@@ -106,6 +106,7 @@ Each layer of evidence covers its own layer. The wire corpus validates protocol 
 ## Related pages
 
 - [Repository layout](./repository-layout.md)
+- [Client library comparison](../reference/client-libraries.md)
 - [Swift: Introduction](../reference/swift/introduction.md)
 - [Protocol overview](../sync/protocol-overview.md)
 - [Consistency model](../sync/consistency-model.md)
