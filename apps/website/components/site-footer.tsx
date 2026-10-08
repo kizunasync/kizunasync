@@ -16,7 +16,7 @@ export function SiteFooter() {
               絆
             </span>
             <span className="text-site-text text-5xl leading-none font-bold tracking-tight">
-              KIZUNA <span className="text-site-muted">sync</span>
+              Kizuna <span className="text-site-muted">Sync</span>
             </span>
           </div>
           <h2 className="font-display mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
@@ -25,13 +25,13 @@ export function SiteFooter() {
           <p className="text-site-muted mt-4 text-base">
             Its SQL runs in your project; no Kizuna-operated service receives sync traffic.
           </p>
-          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row">
+          <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:items-end">
             <HeroCommand />
             <a
               href={GITHUB_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-site-muted hover:text-site-text text-sm underline-offset-4 transition-colors hover:underline"
+              className="text-site-muted hover:text-site-text inline-flex items-center border border-transparent py-2 text-sm underline-offset-4 transition-colors hover:underline"
             >
               Inspect the source →
             </a>

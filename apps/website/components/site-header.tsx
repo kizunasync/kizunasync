@@ -37,12 +37,12 @@ export function SiteHeader() {
           <Link
             href="/"
             aria-label="Kizuna Sync"
-            className="brand-link flex items-baseline gap-1.5 font-semibold tracking-tight"
+            className="flex items-baseline gap-1.5 font-semibold tracking-tight"
           >
             <span className="text-site-accent font-display text-lg leading-none" aria-hidden="true">
               絆
             </span>
-            <BrandMark />
+            <span className="whitespace-nowrap">Kizuna Sync</span>
           </Link>
 
           <SiteHeaderNav />
@@ -68,21 +68,5 @@ export function SiteHeader() {
 
       {mobileOpen ? <SiteHeaderMobileMenu overlayRef={overlayRef} onClose={closeMobile} /> : null}
     </header>
-  )
-}
-
-// MARK: - Pieces
-
-function BrandMark() {
-  return (
-    <span className="brand-mark" aria-hidden="true">
-      <span className="brand-k">
-        <span className="brand-k-full">K</span>
-        <span className="brand-k-short">k</span>
-      </span>
-      <span className="brand-collapse">IZUNA</span>
-      <span className="brand-gap" />
-      <span className="brand-sync">sync</span>
-    </span>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { ICONS } from '@kizunasync/ui'
-import { HERO_CLI_ARGS, PACKAGE_MANAGER_TABS, kizunasyncCommand, type TPackageManager } from '@/lib/site'
+import { PACKAGE_MANAGER_TABS, kizunasyncCommand, type TPackageManager } from '@/lib/site'
 import { useCopyToClipboard } from '@/lib/use-copy-to-clipboard'
 import { useSyncedTab } from '@/lib/use-synced-tab'
 
@@ -14,7 +14,7 @@ import { useSyncedTab } from '@/lib/use-synced-tab'
 export function HeroCommand() {
   const { copied, copy } = useCopyToClipboard()
   const [active, pick] = useSyncedTab('pm', PACKAGE_MANAGER_TABS)
-  const command = kizunasyncCommand(active as TPackageManager, HERO_CLI_ARGS)
+  const command = kizunasyncCommand(active as TPackageManager)
 
   return (
     <div className="relative flex flex-col items-center gap-2">
