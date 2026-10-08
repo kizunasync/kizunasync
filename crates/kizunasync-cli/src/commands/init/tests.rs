@@ -3690,21 +3690,18 @@ fn project_ref_a_re_apply_refused_over_a_missing_column_names_a_fresh_install() 
         "{stderr}"
     );
     assert!(
-        stderr.contains(
-            "the database holds kizunasync tables from an earlier build of the pack, which a re-apply does not reshape. The Management API path cannot run `kizunasync deprovision`, so remove Kizuna over the project's direct connection with `PGPASSWORD=… kizunasync deprovision --purge --db-url <the project's connection string>`"
-        ),
+        stderr.contains(&format!(
+            "the database holds kizunasync tables from an earlier build of the pack, which a re-apply does not reshape. Remove Kizuna with `SUPABASE_ACCESS_TOKEN=… kizunasync deprovision --purge --project-ref {PROJECT_REF}`"
+        )),
         "{stderr}"
     );
     assert!(
-        stderr.contains(
-            "then install it again with `PGPASSWORD=… kizunasync init --db-url <the project's connection string>`."
-        ),
+        stderr.contains(&format!(
+            "then install it again with `SUPABASE_ACCESS_TOKEN=… kizunasync init --project-ref {PROJECT_REF}`."
+        )),
         "{stderr}"
     );
-    assert!(
-        !stderr.contains("deprovision --purge --project-ref"),
-        "{stderr}"
-    );
+    assert!(!stderr.contains("--db-url"), "{stderr}");
     assert!(!stderr.contains(PAT), "{stderr}");
     let calls = transport.calls();
     assert!(!calls.contains(&"schedule-jobs".to_owned()), "{calls:?}");

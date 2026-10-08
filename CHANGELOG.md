@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Ran `kizunasync deprovision` and `kizunasync jobs` over the Management API with `--project-ref`, and made a purge take `kizunasync` off the Data API exposed schemas before it drops the schema
+
 ### Changed
 
 - Narrowed the React Native and Expo peer ranges of `kizunasync` to the tested versions: `react-native` `>=0.86.0 <0.88.0`, and `expo`, `expo-asset`, and `expo-file-system` `~57.0.0`

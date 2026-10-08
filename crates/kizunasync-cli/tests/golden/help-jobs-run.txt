@@ -25,8 +25,14 @@ Options:
       --no-color
           Never emit ANSI colour (also honoured: NO_COLOR)
 
+      --project-ref <REF>
+          Drive the Supabase Management API against this project instead
+
       --workdir <PATH>
           Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+
+      --access-token <TOKEN>
+          Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
 
   -h, --help
           Print help (see a summary with '-h')

@@ -3,9 +3,11 @@ Schedule, last run, and drift against kizunasync._settings
 Usage: kizunasync jobs list [OPTIONS]
 
 Options:
-      --json            Print one JSON object on stdout instead of the human report
-  -v, --version         Print the version and exit
-      --db-url <URL>    Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
-      --no-color        Never emit ANSI colour (also honoured: NO_COLOR)
-      --workdir <PATH>  Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
-  -h, --help            Print help
+      --json                  Print one JSON object on stdout instead of the human report
+  -v, --version               Print the version and exit
+      --db-url <URL>          Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+      --no-color              Never emit ANSI colour (also honoured: NO_COLOR)
+      --project-ref <REF>     Drive the Supabase Management API against this project instead
+      --workdir <PATH>        Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+      --access-token <TOKEN>  Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+  -h, --help                  Print help

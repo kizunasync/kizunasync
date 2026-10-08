@@ -17,7 +17,9 @@
 use serde::Serialize;
 
 use crate::applier::Applier;
+use crate::commands::panel::equivalent::render_over_unknown_url;
 use crate::commands::{FAILURE, OK, UNUSABLE};
+use crate::error::Error;
 use crate::ui::Ui;
 
 mod read;
@@ -190,6 +192,9 @@ pub enum JobsAction {
 pub struct JobsFlags {
     /// Print one JSON object on stdout instead of the human table.
     pub json: bool,
+    /// The connection is the Management API, whose SQL role can lack a
+    /// privilege on the `cron` schema that a direct connection holds.
+    pub management_api: bool,
 }
 
 /// Run the action against an already-resolved connection.
@@ -197,13 +202,13 @@ pub fn run(action: JobsAction, flags: &JobsFlags, applier: &dyn Applier, ui: &mu
     match action {
         JobsAction::List => match read_jobs(applier) {
             Ok(report) => report_list(ui, &report, flags.json),
-            Err(cause) => unusable(ui, &cause.to_string()),
+            Err(cause) => refused(ui, &cause, &["jobs", "list"], *flags),
         },
         JobsAction::Run(job) => run_and_report(&[job], *flags, applier, ui),
         JobsAction::RunAll => run_and_report(&Job::ALL, *flags, applier, ui),
         JobsAction::Schedule => match apply_schedules(applier) {
             Ok(outcome) => report_schedule(ui, &outcome, flags.json),
-            Err(cause) => unusable(ui, &cause.to_string()),
+            Err(cause) => refused(ui, &cause, &["jobs", "schedule"], *flags),
         },
     }
 }
@@ -221,8 +226,17 @@ fn run_and_report(jobs: &[Job], flags: JobsFlags, applier: &dyn Applier, ui: &mu
     }
 }
 
-fn unusable(ui: &mut Ui, cause: &str) -> i32 {
+/// Print `cause` and end on exit 2. A privilege the Management API's SQL role
+/// lacks adds one line naming `args` over a direct connection.
+fn refused(ui: &mut Ui, cause: &Error, args: &[&str], flags: JobsFlags) -> i32 {
     ui.error(&format!("  {cause}"));
+    if flags.management_api && cause.is_insufficient_privilege() {
+        let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
+        ui.log(&format!(
+            "  the Management API's SQL role lacks that privilege on this project: run `{}` over a direct connection instead.",
+            render_over_unknown_url(&args)
+        ));
+    }
 
     UNUSABLE
 }

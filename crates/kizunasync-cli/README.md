@@ -52,7 +52,7 @@ A generated migration writes only the `_settings` columns the run declared. Decl
 
 Database-backed commands use direct Postgres resolution from `--db-url`, `KSYNC_DB_URL`, `DATABASE_URL`, root environment files, or the local Supabase port.
 
-`init`, `sync`, `status`, `upgrade`, `doctor`, and `lint` take `--project-ref` for the Supabase Management API with a PAT from `--access-token` or `SUPABASE_ACCESS_TOKEN`. It is refused alongside `--db-url` on writing commands. `deprovision`, `jobs`, and mock commands accept `--db-url` only.
+`init`, `sync`, `status`, `upgrade`, `doctor`, `lint`, `deprovision`, and `jobs` take `--project-ref` for the Supabase Management API with a PAT from `--access-token` or `SUPABASE_ACCESS_TOKEN`. It is refused alongside `--db-url` on writing commands. Mock commands accept `--db-url` only.
 
 The CLI never uses a publishable, secret, or service-role key as a database transport credential. `doctor --url --publishable-key` is a separate read-only Data API exposure probe.
 
@@ -82,11 +82,11 @@ After the pack is applied, `init` checks `pg_extension` and fails with exit `1` 
 
 ## Background jobs
 
-`jobs list` reports the three jobs against `_settings` schedules and names drift. `jobs run` calls retention functions by hand. `jobs schedule` re-applies the settings schedules. All three take `--db-url` only.
+`jobs list` reports the three jobs against `_settings` schedules and names drift. `jobs run` calls retention functions by hand. `jobs schedule` re-applies the settings schedules. All three take `--db-url` or `--project-ref`. Over `--project-ref`, a `cron` statement the project refuses for a missing privilege (`42501`) prints the refusal and one line naming the same command over a direct connection.
 
 ## Teardown
 
-`deprovision` translates understood `_provisions` rows into reverse-dependency drops. In a project with `supabase/config.toml` it writes them as `<ts>_kizunasync_deprovision.sql`, each statement guarded on the table or schema it needs, and applies the file with `supabase db push`, so the migration history records the teardown and a replay of the directory reproduces it. Anywhere else it runs them over the connection as one transaction. It drops nothing it discovers on its own. The current base pack leaves its schema, bookkeeping tables, indexes, and sequence unledgered.
+`deprovision` translates understood `_provisions` rows into reverse-dependency drops. In a project with `supabase/config.toml` it writes them as `<ts>_kizunasync_deprovision.sql`, each statement guarded on the table or schema it needs, and applies the file with `supabase db push`, so the migration history records the teardown and a replay of the directory reproduces it. Anywhere else, and always over `--project-ref`, it runs them over the connection as one transaction and writes no file; a purge over `--project-ref` is confirmed with that ref. A purge first takes `kizunasync` out of the Data API's exposed schemas, since PostgREST stops serving every schema (`PGRST002`) while a listed schema is missing: through the Management API for a hosted project a token reaches, waiting until the list no longer holds it, in `supabase/config.toml` for the local stack, and with a warning otherwise. It drops nothing it discovers on its own. The current base pack leaves its schema, bookkeeping tables, indexes, and sequence unledgered.
 
 The drops cascade, so before planning `deprovision` reads `pg_depend` and refuses with exit `2` when an object outside the `kizunasync` schema that the ledger does not record depends on a pack object, such as a view over a pack table or a column default that calls a pack function. It lists each one and applies nothing. A `role` row is dropped only when its name starts with `kizunasync`; any other is reported as a row it cannot drop.
 

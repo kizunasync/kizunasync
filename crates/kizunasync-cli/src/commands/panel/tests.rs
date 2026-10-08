@@ -6,10 +6,10 @@ use clap::CommandFactory;
 
 use super::equivalent::render;
 use super::fixtures::{
-    FIXED_NOW, Ledger, NoDataApi, Synced, database, database_of_an_earlier_build,
-    database_without_pg_cron, opener, pack_dir, pack_env,
+    EXPOSED, FIXED_NOW, FakeExposure, Ledger, NoDataApi, Synced, database,
+    database_of_an_earlier_build, database_without_pg_cron, exposing_opener, pack_dir, pack_env,
 };
-use super::menu::{JOB_MESSAGE, JOBS_MESSAGE, NEEDS_DIRECT};
+use super::menu::{JOB_MESSAGE, JOBS_MESSAGE};
 use super::state::{
     ClientsSummary, JobsSummary, LastRun, PackState, SyncedTable, When, describe_when,
     parse_instant,
@@ -58,10 +58,9 @@ fn remote() -> WizardConnection {
 /// A terminal wide enough that no header line wraps.
 const WIDE: usize = 200;
 
-fn state(pack: PackState, transport: Transport, has_migrations: bool) -> PanelState {
+fn state(pack: PackState, has_migrations: bool) -> PanelState {
     PanelState {
         title: "local stack".to_owned(),
-        transport,
         pack,
         pack_version: Some("0.2.6-alpha.3".to_owned()),
         tables: vec![
@@ -113,46 +112,40 @@ fn hint_of(items: &[PanelItem], action: PanelAction) -> Option<&str> {
         .map(|item| item.hint.as_str())
 }
 
-/// Every pack state, over both transports, with and without a migrations
-/// directory: the full menu in the designed order, or the three read-only
-/// items when a newer kizunasync recorded the pack.
+/// Every pack state, with and without a migrations directory: the full menu
+/// in the designed order, or the three read-only items when a newer
+/// kizunasync recorded the pack.
 #[test]
 fn every_state_offers_its_items_in_the_designed_order() {
     for pack in EVERY_PACK_STATE {
-        for transport in [Transport::Direct, Transport::ManagementApi] {
-            for has_migrations in [true, false] {
-                let items = panel_menu(&state(pack, transport, has_migrations));
-                let expected: Vec<&str> = if pack == PackState::Newer {
-                    vec!["Status", "Health check", "Exit"]
-                } else {
-                    [
-                        "Synced tables",
-                        "Project settings",
-                        "Update the pack",
-                        "Health check",
-                        "Status",
-                        "Background jobs",
-                    ]
-                    .into_iter()
-                    .chain(has_migrations.then_some("Pending migrations"))
-                    .chain(["Remove Kizuna", "Exit"])
-                    .collect()
-                };
+        for has_migrations in [true, false] {
+            let items = panel_menu(&state(pack, has_migrations));
+            let expected: Vec<&str> = if pack == PackState::Newer {
+                vec!["Status", "Health check", "Exit"]
+            } else {
+                [
+                    "Synced tables",
+                    "Project settings",
+                    "Update the pack",
+                    "Health check",
+                    "Status",
+                    "Background jobs",
+                ]
+                .into_iter()
+                .chain(has_migrations.then_some("Pending migrations"))
+                .chain(["Remove Kizuna", "Exit"])
+                .collect()
+            };
 
-                assert_eq!(
-                    labels(&items),
-                    expected,
-                    "{pack:?} {transport:?} {has_migrations}"
-                );
-            }
+            assert_eq!(labels(&items), expected, "{pack:?} {has_migrations}");
         }
     }
 }
 
 /// The labels and hints of the approved pseudo UI, word for word.
 #[test]
-fn a_direct_up_to_date_panel_reads_the_designed_hints() {
-    let items = panel_menu(&state(PackState::UpToDate, Transport::Direct, true));
+fn an_up_to_date_panel_reads_the_designed_hints() {
+    let items = panel_menu(&state(PackState::UpToDate, true));
     let rows: Vec<(&str, &str)> = items
         .iter()
         .map(|item| (item.label.as_str(), item.hint.as_str()))
@@ -177,27 +170,25 @@ fn a_direct_up_to_date_panel_reads_the_designed_hints() {
     );
 }
 
-/// `jobs` and `deprovision` take a direct connection, so over the Management
-/// API their items stay, with the reason in place of the hint.
+/// `jobs` and `deprovision` run over either transport, so every pack state
+/// that writes offers both items with their hints.
 #[test]
-fn the_management_api_marks_jobs_and_removal_unavailable_with_the_reason() {
+fn every_writing_state_offers_jobs_and_removal_with_their_hints() {
     for pack in EVERY_PACK_STATE
         .into_iter()
         .filter(|pack| *pack != PackState::Newer)
     {
-        let items = panel_menu(&state(pack, Transport::ManagementApi, true));
+        let items = panel_menu(&state(pack, true));
 
         assert_eq!(
             hint_of(&items, PanelAction::BackgroundJobs),
-            Some(NEEDS_DIRECT)
+            Some("list, run now, reschedule"),
+            "{pack:?}"
         );
         assert_eq!(
             hint_of(&items, PanelAction::RemoveKizuna),
-            Some(NEEDS_DIRECT)
-        );
-        assert_eq!(
-            hint_of(&items, PanelAction::SyncedTables),
-            Some("add, remove or change what syncs")
+            Some("deprovision, with a dry run first"),
+            "{pack:?}"
         );
     }
 }
@@ -225,7 +216,7 @@ fn the_update_item_says_what_it_would_do_for_every_pack_state() {
         (PackState::NoPackOnDisk, "no pack on disk to compare"),
     ];
     for (pack, hint) in expected {
-        let items = panel_menu(&state(pack, Transport::Direct, false));
+        let items = panel_menu(&state(pack, false));
 
         assert_eq!(
             hint_of(&items, PanelAction::UpdatePack),
@@ -237,7 +228,7 @@ fn the_update_item_says_what_it_would_do_for_every_pack_state() {
 
 #[test]
 fn a_pack_a_newer_build_recorded_reads_only_and_says_to_update() {
-    let mut newer = state(PackState::Newer, Transport::Direct, true);
+    let mut newer = state(PackState::Newer, true);
     newer.pack_version = Some("999.0.0".to_owned());
     let (title, body) = header(&newer, WIDE);
     let items = panel_menu(&newer);
@@ -259,14 +250,11 @@ fn a_pack_a_newer_build_recorded_reads_only_and_says_to_update() {
 #[test]
 fn the_header_and_menu_render_matches_the_committed_golden() {
     let mut lines = Vec::new();
-    for (transport, title) in [
-        (Transport::Direct, "local stack"),
-        (
-            Transport::ManagementApi,
-            "project abcdefghijklmnopqrst · Management API",
-        ),
+    for title in [
+        "local stack",
+        "project abcdefghijklmnopqrst · Management API",
     ] {
-        let mut shown = state(PackState::UpToDate, transport, true);
+        let mut shown = state(PackState::UpToDate, true);
         title.clone_into(&mut shown.title);
         let (heading, body) = header(&shown, 80);
         lines.push(format!("┌  {heading}"));
@@ -299,7 +287,7 @@ fn the_header_and_menu_render_matches_the_committed_golden() {
 
 #[test]
 fn the_header_names_the_pack_tables_jobs_and_clients() {
-    let (title, body) = header(&state(PackState::UpToDate, Transport::Direct, true), WIDE);
+    let (title, body) = header(&state(PackState::UpToDate, true), WIDE);
 
     assert_eq!(title, "Kizuna Sync · local stack");
     assert_eq!(
@@ -316,7 +304,7 @@ fn the_header_names_the_pack_tables_jobs_and_clients() {
 /// frame.
 #[test]
 fn a_long_header_value_wraps_at_its_separators_under_the_value_column() {
-    let mut shown = state(PackState::UpToDate, Transport::Direct, true);
+    let mut shown = state(PackState::UpToDate, true);
     shown.tables = ["todos", "notes", "users", "user_favorite_places", "places"]
         .iter()
         .map(|name| SyncedTable {
@@ -346,7 +334,7 @@ fn a_long_header_value_wraps_at_its_separators_under_the_value_column() {
 /// to a line of its own instead of breaking inside itself.
 #[test]
 fn a_long_header_title_wraps_at_its_separator() {
-    let mut shown = state(PackState::UpToDate, Transport::Direct, true);
+    let mut shown = state(PackState::UpToDate, true);
     "postgresql://postgres@127.0.0.1:55322/kz_keys?sslmode=disable".clone_into(&mut shown.title);
     let (title, _) = header(&shown, 80);
 
@@ -360,7 +348,7 @@ fn a_long_header_title_wraps_at_its_separator() {
 #[test]
 fn the_pack_line_names_every_state() {
     let line = |pack| {
-        let (_, body) = header(&state(pack, Transport::Direct, false), WIDE);
+        let (_, body) = header(&state(pack, false), WIDE);
         body.lines().next().unwrap().to_owned()
     };
 
@@ -385,7 +373,7 @@ fn the_pack_line_names_every_state() {
 
 #[test]
 fn an_empty_project_and_a_capped_client_list_say_so() {
-    let mut empty = state(PackState::NotInstalled, Transport::Direct, false);
+    let mut empty = state(PackState::NotInstalled, false);
     empty.tables.clear();
     empty.jobs = Some(JobsSummary::NoPgCron);
     empty.clients = Some(ClientsSummary {
@@ -452,7 +440,6 @@ fn read_state(ledger: Ledger, synced: Synced) -> PanelState {
 
     PanelState::from_reads(&PanelReads {
         title: "local stack".to_owned(),
-        transport: Transport::Direct,
         report: &report,
         rows: &rows,
         plan: Some(&plan),
@@ -537,7 +524,6 @@ fn the_newest_recorded_version_names_the_pack() {
     .unwrap();
     let read = PanelState::from_reads(&PanelReads {
         title: String::new(),
-        transport: Transport::Direct,
         report: &report,
         rows: &rows,
         plan: None,
@@ -816,6 +802,8 @@ struct PanelRun {
     capture: Capture,
     prompter: ScriptedPrompter,
     database: Rc<FakeApplier>,
+    /// The exposed-schema list a Management API connection hands the panel.
+    exposure: Rc<FakeExposure>,
     cli: RecordingCli,
     dir: tempfile::TempDir,
 }
@@ -924,6 +912,8 @@ struct Session {
     database: FakeApplier,
     env: Env,
     migrations_dir: bool,
+    /// The body of `supabase/config.toml`, `None` for no file.
+    config_toml: Option<&'static str>,
     /// Seconds each round's clock moves forward.
     tick: i64,
     /// What Backspace on the menu does before an item applies a change.
@@ -937,6 +927,7 @@ impl Session {
             database,
             env: pack_env(),
             migrations_dir: false,
+            config_toml: None,
             tick: 0,
             menu_back: BackKey::Honoured,
         }
@@ -955,7 +946,12 @@ impl Session {
         let schemas = Schemas {
             database: Rc::clone(&database),
         };
-        let open = opener(&database);
+        if let Some(config) = self.config_toml {
+            std::fs::create_dir_all(dir.path().join("supabase")).unwrap();
+            std::fs::write(dir.path().join("supabase").join("config.toml"), config).unwrap();
+        }
+        let exposure = Rc::new(FakeExposure::new(&database, &EXPOSED));
+        let open = exposing_opener(&database, &exposure);
         let cli = RecordingCli::new();
         let rounds = Cell::new(0_i64);
         let clock = || {
@@ -1008,6 +1004,7 @@ impl Session {
             capture,
             prompter: scripted,
             database,
+            exposure,
             cli,
             dir,
         }
@@ -1554,11 +1551,10 @@ fn a_re_apply_refused_over_an_earlier_build_opens_the_menu_on_remove_kizuna() {
     }
 }
 
-/// Remove Kizuna needs a direct connection, so a Management API panel keeps
-/// opening on Update the pack after a re-apply fails over an earlier build,
-/// and the step names the direct-connection commands.
+/// Over the Management API the step names both commands with the project
+/// ref, and every later menu opens on Remove Kizuna, which runs there too.
 #[test]
-fn over_the_management_api_a_re_apply_refused_over_an_earlier_build_keeps_update_the_pack() {
+fn over_the_management_api_a_re_apply_refused_over_an_earlier_build_opens_on_remove_kizuna() {
     let run = Session {
         connection: remote(),
         ..Session::local(database_of_an_earlier_build(Synced::TodosAndNotes))
@@ -1566,21 +1562,29 @@ fn over_the_management_api_a_re_apply_refused_over_an_earlier_build_keeps_update
     .run(vec![
         Answer::Action(PanelAction::UpdatePack),
         Answer::Confirm(true),
+        Answer::Action(PanelAction::Status),
         Answer::Action(PanelAction::Exit),
     ]);
     let stderr = run.stderr();
 
     assert_eq!(run.code, OK, "{stderr}");
+    assert_eq!(run.prompter.unused(), 0);
     assert!(
-        stderr.contains(
-            "remove Kizuna over the project's direct connection with `PGPASSWORD=… kizunasync deprovision --purge --db-url <the project's connection string>`"
-        ),
+        stderr.contains(&format!(
+            "Remove Kizuna with `SUPABASE_ACCESS_TOKEN=… kizunasync deprovision --purge --project-ref {PROJECT_REF}` (your application tables and their data stay), then install it again with `SUPABASE_ACCESS_TOKEN=… kizunasync init --project-ref {PROJECT_REF}`."
+        )),
         "{stderr}"
     );
+    assert!(!stderr.contains("--db-url"), "{stderr}");
     assert_eq!(
         run.opened_on(MENU_MESSAGE),
-        [Some(PanelAction::UpdatePack), Some(PanelAction::UpdatePack)]
+        [
+            Some(PanelAction::UpdatePack),
+            Some(PanelAction::RemoveKizuna),
+            Some(PanelAction::RemoveKizuna)
+        ]
     );
+    assert!(!stderr.contains(TOKEN), "{stderr}");
 }
 
 /// A pack directory holding this checkout's files plus one pending file.
@@ -1956,30 +1960,262 @@ fn backspace_on_the_purge_question_reopens_the_typed_target_on_what_was_typed() 
     );
 }
 
+/// Over the Management API the jobs submenu runs each job through the API,
+/// and every equivalent names the project.
 #[test]
-fn over_the_management_api_jobs_and_removal_say_why_and_run_nothing() {
-    let mut session = Session::local(current());
-    session.connection = remote();
-    let run = session.run(vec![
+fn over_the_management_api_the_jobs_submenu_runs_through_the_api() {
+    let run = Session {
+        connection: remote(),
+        ..Session::local(current())
+    }
+    .run(vec![
         Answer::Action(PanelAction::BackgroundJobs),
-        Answer::Action(PanelAction::RemoveKizuna),
+        Answer::Action(PanelAction::ListJobs),
+        Answer::Action(PanelAction::BackgroundJobs),
+        Answer::Action(PanelAction::RunJobNow),
+        Answer::Action(PanelAction::RunJob(Job::Reap)),
+        Answer::Confirm(true),
+        Answer::Action(PanelAction::BackgroundJobs),
+        Answer::Action(PanelAction::RescheduleJobs),
+        Answer::Confirm(true),
         Answer::Action(PanelAction::Exit),
     ]);
+    let project = format!("--project-ref {PROJECT_REF}");
 
-    assert_eq!(run.code, OK);
-    assert!(run.stderr().contains(NEEDS_DIRECT));
-    assert_eq!(run.selects(JOBS_MESSAGE), Vec::<Vec<PanelItem>>::new());
-    assert!(
-        !run.prompter
-            .asked()
-            .iter()
-            .any(|ask| matches!(ask, Ask::TypedConfirmation { .. }))
+    assert_eq!(run.code, OK, "{}", run.stderr());
+    assert_eq!(run.prompter.unused(), 0);
+    assert!(run.ran("from cron.job j"));
+    assert!(run.ran("select kizunasync.reap_tombstones() as count;"));
+    assert!(run.ran("kizunasync._schedule_jobs()"));
+    assert_eq!(
+        equivalent_lines(&run),
+        [
+            format!("SUPABASE_ACCESS_TOKEN=… kizunasync jobs list {project}"),
+            format!("SUPABASE_ACCESS_TOKEN=… kizunasync jobs run reap {project}"),
+            format!("SUPABASE_ACCESS_TOKEN=… kizunasync jobs schedule {project}"),
+        ]
     );
-    assert!(!run.ran("object_args"));
+    assert!(!run.stderr().contains(TOKEN));
     assert_eq!(
         run.headers()[0].0,
         format!("Kizuna Sync · project {PROJECT_REF} · Management API")
     );
+}
+
+/// Over the Management API Remove Kizuna asks for the project ref, applies
+/// the teardown through the API as one transaction with no migration file,
+/// and prints the command with `--project-ref`.
+#[test]
+fn over_the_management_api_remove_kizuna_is_confirmed_with_the_ref_and_runs_through_the_api() {
+    for purge in [false, true] {
+        let run = Session {
+            connection: remote(),
+            ..Session::local(current())
+        }
+        .run(vec![
+            Answer::Action(PanelAction::RemoveKizuna),
+            Answer::Typed(PROJECT_REF.to_owned()),
+            Answer::Confirm(purge),
+            Answer::Action(PanelAction::Exit),
+        ]);
+        let teardown: Vec<String> = run
+            .executed()
+            .into_iter()
+            .filter(|sql| sql.starts_with("-- Generated by `kizunasync deprovision"))
+            .collect();
+
+        assert_eq!(run.code, OK, "purge {purge}: {}", run.stderr());
+        assert_eq!(run.prompter.unused(), 0, "purge {purge}");
+        assert!(run.prompter.asked().contains(&Ask::TypedConfirmation {
+            message: format!("Type \"{PROJECT_REF}\" to remove Kizuna from this database"),
+            expected: PROJECT_REF.to_owned(),
+            current: None,
+        }));
+        assert_eq!(teardown.len(), 1, "purge {purge}: {teardown:?}");
+        assert_eq!(teardown[0].matches("begin;").count(), 1, "purge {purge}");
+        assert!(teardown[0].trim_end().ends_with("commit;"), "purge {purge}");
+        assert!(!teardown[0].contains("do $kizunasync$"), "purge {purge}");
+        assert_eq!(
+            teardown[0].contains("drop schema if exists kizunasync cascade;"),
+            purge
+        );
+        assert_eq!(run.migrations(), Vec::<String>::new(), "purge {purge}");
+        assert!(run.cli.pushes.borrow().is_empty(), "purge {purge}");
+        let expected = if purge {
+            format!(
+                "SUPABASE_ACCESS_TOKEN=… kizunasync deprovision --yes --purge --confirm {PROJECT_REF} --project-ref {PROJECT_REF}"
+            )
+        } else {
+            format!(
+                "SUPABASE_ACCESS_TOKEN=… kizunasync deprovision --yes --project-ref {PROJECT_REF}"
+            )
+        };
+        assert_eq!(
+            equivalent_lines(&run).last(),
+            Some(&expected),
+            "purge {purge}"
+        );
+        assert!(!run.stderr().contains(TOKEN), "purge {purge}");
+        if purge {
+            assert_eq!(*run.exposure.unexposed.borrow(), [false]);
+            assert_eq!(*run.exposure.exposed.borrow(), ["public", "graphql_public"]);
+            assert!(
+                run.stderr()
+                    .contains("  Data API:         removed kizunasync from the exposed schemas"),
+                "{}",
+                run.stderr()
+            );
+        } else {
+            assert!(run.exposure.unexposed.borrow().is_empty());
+            assert!(
+                !run.stderr().contains("Data API:         removed"),
+                "{}",
+                run.stderr()
+            );
+        }
+    }
+}
+
+/// Over a direct connection, a purge in a Supabase CLI project takes the
+/// schema out of `[api].schemas` before the migration is pushed, and one with
+/// no config file warns to do it by hand first. The project's exposure is
+/// never reached through the Management API.
+#[test]
+fn a_direct_purge_unexposes_through_config_toml_or_says_to_do_it_by_hand() {
+    for config in [
+        Some("project_id = \"x\"\n\n[api]\nschemas = [\"public\", \"kizunasync\"]\n"),
+        None,
+    ] {
+        let run = Session {
+            config_toml: config,
+            ..Session::local(current())
+        }
+        .run(vec![
+            Answer::Action(PanelAction::RemoveKizuna),
+            Answer::Typed("local".to_owned()),
+            Answer::Confirm(true),
+            Answer::Action(PanelAction::Exit),
+        ]);
+        let stderr = run.stderr();
+
+        assert_eq!(run.code, OK, "{config:?}: {stderr}");
+        assert!(run.exposure.unexposed.borrow().is_empty(), "{config:?}");
+        if config.is_some() {
+            assert_eq!(*run.cli.pushes.borrow(), [PushTarget::Local]);
+            assert_eq!(
+                std::fs::read_to_string(run.dir.path().join("supabase/config.toml")).unwrap(),
+                "project_id = \"x\"\n\n[api]\nschemas = [\"public\"]\n"
+            );
+            assert!(
+                stderr.contains("  Data API:         removed \"kizunasync\" from [api].schemas in supabase/config.toml"),
+                "{stderr}"
+            );
+            let removed = stderr.find("  Data API:         removed").unwrap();
+            let pushed = stderr.find("applied via supabase db push").unwrap();
+            assert!(removed < pushed, "{stderr}");
+        } else {
+            assert!(run.ran("drop schema if exists kizunasync cascade;"));
+            assert!(
+                stderr.contains("  Data API:         remove kizunasync from this project's Data API exposed schemas"),
+                "{stderr}"
+            );
+        }
+    }
+}
+
+/// A project ref the user did not type removes nothing.
+#[test]
+fn over_the_management_api_a_wrong_target_removes_nothing() {
+    let run = Session {
+        connection: remote(),
+        ..Session::local(current())
+    }
+    .run(vec![
+        Answer::Action(PanelAction::RemoveKizuna),
+        Answer::Typed("local".to_owned()),
+        Answer::Action(PanelAction::Exit),
+    ]);
+
+    assert_eq!(run.code, OK, "{}", run.stderr());
+    assert!(run.stderr().contains(&format!(
+        "that is not \"{PROJECT_REF}\": nothing was removed."
+    )));
+    assert!(!run.ran("begin;"));
+    assert_eq!(equivalent_lines(&run), Vec::<String>::new());
+    assert!(run.exposure.unexposed.borrow().is_empty());
+}
+
+/// What a purge would do to the Data API is part of the plan the typed
+/// target confirms, so it shows before that question, purge or not.
+#[test]
+fn the_data_api_step_shows_before_the_typed_target() {
+    for (connection, line) in [
+        (
+            remote(),
+            "  Data API:         would remove kizunasync from the exposed schemas",
+        ),
+        (
+            local(),
+            "  Data API:         remove kizunasync from this project's Data API exposed schemas",
+        ),
+    ] {
+        let run = Session {
+            connection,
+            ..Session::local(current())
+        }
+        .run(vec![
+            Answer::Action(PanelAction::RemoveKizuna),
+            Answer::Typed("wrong".to_owned()),
+            Answer::Action(PanelAction::Exit),
+        ]);
+        let stderr = run.stderr();
+
+        assert_eq!(run.code, OK, "{stderr}");
+        assert!(
+            stderr.contains("a purge also takes kizunasync out of the Data API first:"),
+            "{stderr}"
+        );
+        assert!(stderr.contains(line), "{stderr}");
+        assert!(!run.ran("begin;"));
+    }
+}
+
+/// A `--linked` connection reaches a hosted project, so its purge never
+/// edits the local `supabase/config.toml`: with no token it warns instead.
+#[test]
+fn a_linked_purge_without_a_token_warns_and_leaves_config_toml_alone() {
+    let config = "project_id = \"x\"\n\n[api]\nschemas = [\"public\", \"kizunasync\"]\n";
+    let run = Session {
+        connection: WizardConnection::Direct(DirectConnection {
+            url: format!(
+                "postgres://postgres.{PROJECT_REF}:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
+            ),
+            push: PushTarget::Linked,
+        }),
+        config_toml: Some(config),
+        ..Session::local(current())
+    }
+    .run(vec![
+        Answer::Action(PanelAction::RemoveKizuna),
+        Answer::Typed(PROJECT_REF.to_owned()),
+        Answer::Confirm(true),
+        Answer::Action(PanelAction::Exit),
+    ]);
+    let stderr = run.stderr();
+
+    assert_eq!(run.code, OK, "{stderr}");
+    assert_eq!(*run.cli.pushes.borrow(), [PushTarget::Linked]);
+    assert_eq!(
+        std::fs::read_to_string(run.dir.path().join("supabase/config.toml")).unwrap(),
+        config
+    );
+    assert!(
+        stderr.contains(
+            "  Data API:         remove kizunasync from this project's Data API exposed schemas"
+        ),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("removed \"kizunasync\""), "{stderr}");
 }
 
 // MARK: - project settings

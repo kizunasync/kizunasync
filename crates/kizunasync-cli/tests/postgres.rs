@@ -2833,7 +2833,8 @@ fn bare_kizunasync(
     let paths = ProjectPaths::rooted_at(project.to_path_buf());
     let env_files = env_file::load(project);
     let live = LivePorts::new();
-    let open = |connection: &WizardConnection| smart::open_applier(connection);
+    let open =
+        |connection: &WizardConnection| smart::open_panel(connection, &paths, &env, &env_files);
     let clock = kizunasync_cli::clock::now_unix;
     let mut scripted = ScriptedPrompter::new(answers);
     let (mut ui, capture) = Ui::capture();

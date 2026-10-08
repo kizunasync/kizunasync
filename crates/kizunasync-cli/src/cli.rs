@@ -446,9 +446,8 @@ pub(crate) struct DeprovisionArgs {
     /// Refused: the ledger lives in your project database
     #[arg(long)]
     pub(crate) local_only: bool,
-    /// Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
-    #[arg(long, value_name = "URL")]
-    pub(crate) db_url: Option<String>,
+    #[command(flatten)]
+    pub(crate) transport: TransportArgs,
 }
 
 impl fmt::Debug for DeprovisionArgs {
@@ -460,14 +459,13 @@ impl fmt::Debug for DeprovisionArgs {
             .field("purge", &self.purge)
             .field("confirm", &self.confirm)
             .field("local_only", &self.local_only)
-            .field("db_url", &redacted_db_url(self.db_url.as_ref()))
+            .field("transport", &self.transport)
             .finish()
     }
 }
 
-/// `jobs` reads and writes `cron.job` on a service connection, so it takes the
-/// direct-Postgres transport only: the Management API's SQL endpoint is a
-/// different privilege ladder, and the three jobs are an operator surface.
+/// The [`TransportArgs`] flags, declared one by one because each is global:
+/// accepted on either side of the `jobs` subcommand.
 #[derive(Args)]
 pub(crate) struct JobsArgs {
     /// Print one JSON object on stdout instead of the human report
@@ -476,6 +474,12 @@ pub(crate) struct JobsArgs {
     /// Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
     #[arg(long, global = true, value_name = "URL")]
     pub(crate) db_url: Option<String>,
+    /// Drive the Supabase Management API against this project instead
+    #[arg(long, global = true, value_name = "REF", conflicts_with = "db_url", value_parser = ProjectRef::parse)]
+    pub(crate) project_ref: Option<ProjectRef>,
+    /// Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+    #[arg(long, global = true, value_name = "TOKEN")]
+    pub(crate) access_token: Option<String>,
     #[command(subcommand)]
     pub(crate) command: JobsCommand,
 }
@@ -486,6 +490,8 @@ impl fmt::Debug for JobsArgs {
             .debug_struct("JobsArgs")
             .field("json", &self.json)
             .field("db_url", &redacted_db_url(self.db_url.as_ref()))
+            .field("project_ref", &self.project_ref)
+            .field("access_token", &redacted_secret(self.access_token.as_ref()))
             .field("command", &self.command)
             .finish()
     }
@@ -630,35 +636,63 @@ impl fmt::Debug for ChurnArgs {
 mod tests {
     use super::*;
 
-    #[test]
-    fn manual_debug_impls_never_print_a_db_url_password_or_an_access_token() {
-        let transport = TransportArgs {
-            db_url: Some("postgresql://postgres:hunter2@127.0.0.1:54322/postgres".to_owned()),
-            project_ref: None,
-            access_token: Some("sbp_0123456789abcdef0123456789abcdef01234567".to_owned()),
-        };
-        let rendered = format!("{transport:?}");
+    const DB_URL: &str = "postgresql://postgres:hunter2@127.0.0.1:54322/postgres";
+    const ACCESS_TOKEN: &str = "sbp_0123456789abcdef0123456789abcdef01234567";
 
-        assert!(!rendered.contains("hunter2"), "{rendered}");
-        assert!(!rendered.contains("sbp_0123456789abcdef"), "{rendered}");
-        assert!(rendered.contains("127.0.0.1:54322"), "{rendered}");
-        assert!(
-            rendered.contains("access_token: Some(\"***\")"),
-            "{rendered}"
-        );
+    fn transport() -> TransportArgs {
+        TransportArgs {
+            db_url: Some(DB_URL.to_owned()),
+            project_ref: None,
+            access_token: Some(ACCESS_TOKEN.to_owned()),
+        }
     }
 
     #[test]
-    fn a_db_url_only_struct_redacts_it_too() {
+    fn manual_debug_impls_never_print_a_db_url_password_or_an_access_token() {
         let deprovision = DeprovisionArgs {
             dry_run: false,
             yes: false,
             purge: false,
             confirm: None,
             local_only: false,
-            db_url: Some("postgresql://postgres:hunter2@127.0.0.1:54322/postgres".to_owned()),
+            transport: transport(),
+        };
+        let jobs = JobsArgs {
+            json: false,
+            db_url: Some(DB_URL.to_owned()),
+            project_ref: None,
+            access_token: Some(ACCESS_TOKEN.to_owned()),
+            command: JobsCommand::List,
+        };
+        for rendered in [
+            format!("{:?}", transport()),
+            format!("{deprovision:?}"),
+            format!("{jobs:?}"),
+        ] {
+            assert!(!rendered.contains("hunter2"), "{rendered}");
+            assert!(!rendered.contains("sbp_0123456789abcdef"), "{rendered}");
+            assert!(rendered.contains("127.0.0.1:54322"), "{rendered}");
+            assert!(
+                rendered.contains("access_token: Some(\"***\")"),
+                "{rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_db_url_only_struct_redacts_it_too() {
+        let seed = SeedArgs {
+            table: None,
+            rows: 1,
+            users: 1,
+            images: 0,
+            seed: 1,
+            clean: false,
+            dry_run: false,
+            yes: false,
+            db_url: Some(DB_URL.to_owned()),
         };
 
-        assert!(!format!("{deprovision:?}").contains("hunter2"));
+        assert!(!format!("{seed:?}").contains("hunter2"));
     }
 }

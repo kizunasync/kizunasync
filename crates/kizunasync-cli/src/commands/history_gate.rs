@@ -628,7 +628,7 @@ fn remove_unrecorded(
 }
 
 /// Whether the history records the version of the migration file `name`.
-fn is_recorded(name: &str, applied: &[AppliedMigration]) -> bool {
+pub(crate) fn is_recorded(name: &str, applied: &[AppliedMigration]) -> bool {
     version_of(name)
         .is_some_and(|version| applied.iter().any(|migration| migration.version == version))
 }

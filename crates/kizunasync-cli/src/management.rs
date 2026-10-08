@@ -132,6 +132,59 @@ pub enum ExposeOutcome {
     Added,
 }
 
+/// Whether `unexpose_schema` had to change anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnexposeOutcome {
+    /// It was dropped from the list.
+    Removed,
+    /// The schema was not listed.
+    NotPresent,
+    /// It is the only exposed schema. An empty list would expose nothing at
+    /// all, so it stays listed.
+    OnlyExposed,
+}
+
+/// What dropping `schema` from `exposed` does, decided without writing it.
+#[must_use]
+pub fn unexpose_outcome(exposed: &[String], schema: &str) -> UnexposeOutcome {
+    if !exposed.iter().any(|entry| entry == schema) {
+        return UnexposeOutcome::NotPresent;
+    }
+    if exposed.iter().all(|entry| entry == schema) {
+        return UnexposeOutcome::OnlyExposed;
+    }
+
+    UnexposeOutcome::Removed
+}
+
+/// A hosted project's exposed-schema list, as the port a command reads and
+/// edits it through.
+pub trait ExposedSchemas {
+    /// The exposed schemas.
+    ///
+    /// # Errors
+    /// Returns [`Error::Transport`] when the list cannot be read.
+    fn exposed_schemas(&self) -> Result<Vec<String>>;
+
+    /// Drop `schema` from the list.
+    ///
+    /// # Errors
+    /// Returns [`Error::Transport`] when the list cannot be read or written.
+    fn unexpose_schema(&self, schema: &str) -> Result<UnexposeOutcome>;
+
+    /// Add `schema` back to the list.
+    ///
+    /// # Errors
+    /// Returns [`Error::Transport`] when the list cannot be read or written.
+    fn expose_schema(&self, schema: &str) -> Result<ExposeOutcome>;
+
+    /// Wait between two reads of a list a write has not reached yet: the
+    /// Management API applies a PATCH some time after it answers it.
+    fn wait(&self, duration: std::time::Duration) {
+        std::thread::sleep(duration);
+    }
+}
+
 /// The Management API caller, and an [`Applier`] over its query endpoint.
 pub struct ManagementApi<T: HttpTransport> {
     transport: T,
@@ -221,6 +274,42 @@ impl<T: HttpTransport> ManagementApi<T> {
         self.call("PATCH", &self.postgrest_endpoint, Some(&payload))?;
 
         Ok(ExposeOutcome::Added)
+    }
+
+    /// Drop `schema` from the exposed list, or report it was not there or is
+    /// the only one.
+    ///
+    /// # Errors
+    /// Returns [`Error::Transport`] when either call fails.
+    pub fn unexpose_schema(&self, schema: &str) -> Result<UnexposeOutcome> {
+        let exposed = self.exposed_schemas()?;
+        let outcome = unexpose_outcome(&exposed, schema);
+        if outcome != UnexposeOutcome::Removed {
+            return Ok(outcome);
+        }
+        let kept: Vec<&str> = exposed
+            .iter()
+            .map(String::as_str)
+            .filter(|entry| *entry != schema)
+            .collect();
+        let payload = serde_json::json!({ "db_schema": kept.join(&SCHEMA_SEPARATOR.to_string()) });
+        self.call("PATCH", &self.postgrest_endpoint, Some(&payload))?;
+
+        Ok(outcome)
+    }
+}
+
+impl<T: HttpTransport> ExposedSchemas for ManagementApi<T> {
+    fn exposed_schemas(&self) -> Result<Vec<String>> {
+        Self::exposed_schemas(self)
+    }
+
+    fn unexpose_schema(&self, schema: &str) -> Result<UnexposeOutcome> {
+        Self::unexpose_schema(self, schema)
+    }
+
+    fn expose_schema(&self, schema: &str) -> Result<ExposeOutcome> {
+        Self::expose_schema(self, schema)
     }
 }
 
@@ -461,6 +550,9 @@ mod tests {
 
     struct FakeTransport {
         answers: Vec<(String, HttpResponse)>,
+        /// The method every call of which is answered with this response,
+        /// whatever its URL.
+        refused: Option<(String, HttpResponse)>,
         seen: RefCell<Vec<(String, String, Option<String>)>>,
         bearer: RefCell<Vec<String>>,
     }
@@ -469,9 +561,21 @@ mod tests {
         fn new() -> Self {
             Self {
                 answers: Vec::new(),
+                refused: None,
                 seen: RefCell::new(Vec::new()),
                 bearer: RefCell::new(Vec::new()),
             }
+        }
+
+        fn refusing(mut self, method: &str, status: u16, body: &str) -> Self {
+            self.refused = Some((
+                method.to_owned(),
+                HttpResponse {
+                    status,
+                    body: body.to_owned(),
+                },
+            ));
+            self
         }
 
         fn answer(mut self, needle: &str, status: u16, body: &str) -> Self {
@@ -500,6 +604,11 @@ mod tests {
                 body.map(ToOwned::to_owned),
             ));
             self.bearer.borrow_mut().push(token.to_owned());
+            if let Some((refused, response)) = &self.refused
+                && refused == method
+            {
+                return Ok(response.clone());
+            }
             for (needle, response) in &self.answers {
                 if url.contains(needle.as_str()) {
                     return Ok(response.clone());
@@ -620,6 +729,66 @@ mod tests {
             seen[1].2.as_deref(),
             Some(r#"{"db_schema":"public,kizunasync"}"#)
         );
+    }
+
+    #[test]
+    fn unexposing_a_listed_schema_patches_the_list_without_it() {
+        let client = api(FakeTransport::new().answer(
+            "/postgrest",
+            200,
+            r#"{"db_schema":"public, kizunasync,graphql_public"}"#,
+        ));
+
+        assert_eq!(
+            client.unexpose_schema("kizunasync").unwrap(),
+            UnexposeOutcome::Removed
+        );
+        let seen = client.transport.seen.borrow();
+        assert_eq!(seen.len(), 2);
+        assert_eq!(seen[1].0, "PATCH");
+        assert_eq!(
+            seen[1].2.as_deref(),
+            Some(r#"{"db_schema":"public,graphql_public"}"#)
+        );
+    }
+
+    #[test]
+    fn unexposing_a_schema_that_is_not_listed_patches_nothing() {
+        let client =
+            api(FakeTransport::new().answer("/postgrest", 200, r#"{"db_schema":"public"}"#));
+
+        assert_eq!(
+            client.unexpose_schema("kizunasync").unwrap(),
+            UnexposeOutcome::NotPresent
+        );
+        assert_eq!(client.transport.seen.borrow().len(), 1);
+    }
+
+    /// An empty `db_schema` would expose nothing at all, so the only exposed
+    /// schema stays listed and the outcome says so.
+    #[test]
+    fn unexposing_the_only_exposed_schema_patches_nothing() {
+        let client =
+            api(FakeTransport::new().answer("/postgrest", 200, r#"{"db_schema":"kizunasync"}"#));
+
+        assert_eq!(
+            client.unexpose_schema("kizunasync").unwrap(),
+            UnexposeOutcome::OnlyExposed
+        );
+        assert_eq!(client.transport.seen.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_refused_unexpose_patch_is_a_transport_failure() {
+        let client = api(FakeTransport::new()
+            .answer("/postgrest", 200, r#"{"db_schema":"public,kizunasync"}"#)
+            .refusing("PATCH", 403, "forbidden"));
+        let Error::Transport(message) = client.unexpose_schema("kizunasync").unwrap_err() else {
+            panic!("a refused PATCH is a transport failure");
+        };
+
+        assert!(message.contains("PATCH"), "{message}");
+        assert!(message.contains("403 forbidden"), "{message}");
     }
 
     #[test]

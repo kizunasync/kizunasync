@@ -18,14 +18,14 @@ use crate::commands::{
 };
 use crate::env::Env;
 use crate::env_file::EnvFileValues;
-use crate::management::{ManagementApi, ReqwestTransport, resolve_access_token};
+use crate::management::{ManagementApi, ReqwestTransport, ResolvedToken, resolve_access_token};
 use crate::pg::{PgApplier, probe_db};
 use crate::project_ref::ProjectRef;
 use crate::prompts::{CliclackPrompter, is_interactive, is_pretty_tty};
 use crate::proposals::{ConflictMode, SyncMode};
 use crate::server_facts::{ServerFacts, read_server_facts};
 use crate::supabase_cli::{ProcessCli, PushTarget, run_login};
-use crate::token::KeyringStore;
+use crate::token::{ACCESS_TOKEN_ENV, KeyringStore};
 use crate::ui::{ColorMode, Ui};
 use crate::workdir::ProjectPaths;
 use crate::{VERSION, db, discovery, env_file, error, login_role, management, mock_seed, workdir};
@@ -158,7 +158,14 @@ fn run_bare(workdir: Option<&Path>, session: &Session, ui: &mut Ui) -> i32 {
         config: &smart::read_config_over,
         linked: &|project_ref, token| linked_connection(project_ref, token, &context),
         panel: panel::PanelPorts {
-            open: &smart::open_applier,
+            open: &|connection| {
+                smart::open_panel(
+                    connection,
+                    &context.paths,
+                    &context.session.env,
+                    &context.env_files,
+                )
+            },
             doctor: live.ports(&context.env_files),
             clock: &crate::clock::now_unix,
         },
@@ -440,7 +447,20 @@ fn sync_remote(
         return Ok(None);
     };
 
-    let token = match resolve_access_token(flags.access_token.as_deref(), &context.session.env) {
+    management_api(project_ref, flags.access_token.as_deref(), context, ui)
+        .map(|api| Some(Box::new(api)))
+}
+
+/// The Management API client for `project_ref`, its token resolved the way
+/// `init --project-ref` resolves it, or the exit code once the reason is on
+/// `ui`.
+fn management_api(
+    project_ref: &ProjectRef,
+    access_token: Option<&str>,
+    context: &Context<'_>,
+    ui: &mut Ui,
+) -> Result<ManagementApi<ReqwestTransport>, i32> {
+    let token = match resolve_access_token(access_token, &context.session.env) {
         Ok(token) => token,
         Err(cause) => {
             ui.log(&format!("  {cause}"));
@@ -458,12 +478,7 @@ fn sync_remote(
     };
     ui.log(&format!("  access token:     {}", token.source));
 
-    Ok(Some(Box::new(ManagementApi::new(
-        http,
-        &token.token,
-        project_ref,
-        None,
-    ))))
+    Ok(ManagementApi::new(http, &token.token, project_ref, None))
 }
 
 /// The two switches of a boolean pair, as one declaration. Neither passed is
@@ -597,9 +612,43 @@ fn run_deprovision(args: &DeprovisionArgs, context: &Context<'_>, ui: &mut Ui) -
         return deprovision::refuse_local_only(ui);
     }
 
+    let request = deprovision::DeprovisionRequest {
+        dry_run: args.dry_run,
+        yes: args.yes,
+        purge: args.purge,
+        confirm: args.confirm.as_deref(),
+    };
+    if let Some(project_ref) = args.transport.project_ref.as_ref() {
+        return match management_api(
+            project_ref,
+            args.transport.access_token.as_deref(),
+            context,
+            ui,
+        ) {
+            Ok(api) => {
+                deprovision::run_over_api(&api, project_ref, &request, &context.session.env, ui)
+            }
+            Err(code) => code,
+        };
+    }
+
+    // A purge may edit a hosted project's exposed schemas, so the token it
+    // would do that with is checked before anything connects.
+    let token = if args.purge {
+        match purge_token(
+            args.transport.access_token.as_deref(),
+            &context.session.env,
+            ui,
+        ) {
+            Ok(token) => token,
+            Err(code) => return code,
+        }
+    } else {
+        PurgeToken::Absent
+    };
     let Some((url, source)) = resolve_connection_from(
         "kizunasync deprovision",
-        args.db_url.as_deref(),
+        args.transport.db_url.as_deref(),
         context,
         true,
         ui,
@@ -627,31 +676,134 @@ fn run_deprovision(args: &DeprovisionArgs, context: &Context<'_>, ui: &mut Ui) -
     } else {
         deprovision::Delivery::Direct(&execute)
     };
+    let (target, api) = purge_target(&connection, &context.paths, token, ui);
+    let exposure = exposure_over(&target, api.as_ref(), &context.paths);
 
     deprovision::run_over(
         &applier,
-        &url,
-        &deprovision::DeprovisionRequest {
-            dry_run: args.dry_run,
-            yes: args.yes,
-            purge: args.purge,
-            confirm: args.confirm.as_deref(),
-        },
+        &deprovision::expected_confirmation(&url),
+        &request,
         &delivery,
+        &exposure,
         &context.session.env,
         ui,
     )
 }
 
-/// `jobs` reads `cron.job` and calls the retention functions, both of which
-/// need the service connection rather than the Data API, so it resolves a
-/// direct connection and nothing else.
-fn run_jobs(args: &JobsArgs, context: &Context<'_>, ui: &mut Ui) -> i32 {
-    let Some(url) =
-        resolve_connection("kizunasync jobs", args.db_url.as_deref(), context, true, ui)
-    else {
-        return UNUSABLE;
+/// The list a purge over `connection` edits ([`deprovision::exposure_target`]),
+/// and the Management API client for a hosted project the token reaches.
+fn purge_target(
+    connection: &init_command::DirectConnection,
+    paths: &ProjectPaths,
+    token: PurgeToken,
+    ui: &mut Ui,
+) -> (
+    deprovision::ExposureTarget,
+    Option<ManagementApi<ReqwestTransport>>,
+) {
+    let hosted = matches!(
+        deprovision::exposure_target(connection, paths, None, true),
+        deprovision::ExposureTarget::ManagementApi(_)
+    );
+    let token = if hosted {
+        usable_token(token, ui)
+    } else {
+        None
     };
+    let target = deprovision::exposure_target(connection, paths, None, token.is_some());
+    let api = match (&target, &token) {
+        (deprovision::ExposureTarget::ManagementApi(project_ref), Some(token)) => {
+            ReqwestTransport::new()
+                .ok()
+                .map(|http| ManagementApi::new(http, &token.token, project_ref, None))
+        }
+        (deprovision::ExposureTarget::ManagementApi(_), None)
+        | (deprovision::ExposureTarget::ConfigToml | deprovision::ExposureTarget::ByHand, _) => {
+            None
+        }
+    };
+
+    (target, api)
+}
+
+/// `target` as the step [`deprovision::run_over`] takes, through `api` when
+/// one was built for it.
+fn exposure_over<'a>(
+    target: &'a deprovision::ExposureTarget,
+    api: Option<&'a ManagementApi<ReqwestTransport>>,
+    paths: &'a ProjectPaths,
+) -> deprovision::Exposure<'a> {
+    match (target, api) {
+        (deprovision::ExposureTarget::ManagementApi(project_ref), Some(api)) => {
+            deprovision::Exposure::ManagementApi { api, project_ref }
+        }
+        (deprovision::ExposureTarget::ConfigToml, _) => {
+            deprovision::Exposure::ConfigToml(&paths.config_toml)
+        }
+        (deprovision::ExposureTarget::ManagementApi(_), None)
+        | (deprovision::ExposureTarget::ByHand, _) => deprovision::Exposure::ByHand,
+    }
+}
+
+/// What a purge over a direct connection may edit a hosted project's exposed
+/// schemas with.
+enum PurgeToken {
+    /// A Personal Access Token.
+    Valid(ResolvedToken),
+    /// `SUPABASE_ACCESS_TOKEN` holds something else, for this reason.
+    Invalid(String),
+    /// No token at all.
+    Absent,
+}
+
+/// The token a purge over a direct connection resolves the way
+/// `--project-ref` does: `--access-token`, else `SUPABASE_ACCESS_TOKEN`. A flag
+/// that is not a token stops the run (exit 2) with the same sentence.
+fn purge_token(explicit: Option<&str>, env: &Env, ui: &mut Ui) -> Result<PurgeToken, i32> {
+    match resolve_access_token(explicit, env) {
+        Ok(token) => Ok(PurgeToken::Valid(token)),
+        Err(cause) if explicit.is_some_and(|value| !value.is_empty()) => {
+            ui.log(&format!("  {cause}"));
+
+            Err(UNUSABLE)
+        }
+        Err(cause) if env.get(ACCESS_TOKEN_ENV).is_some() => {
+            Ok(PurgeToken::Invalid(cause.to_string()))
+        }
+        Err(_) => Ok(PurgeToken::Absent),
+    }
+}
+
+/// The token to use once the purge's target would use one: an environment
+/// value that is not a token warns once, and the purge falls back to the
+/// by-hand step.
+fn usable_token(token: PurgeToken, ui: &mut Ui) -> Option<ResolvedToken> {
+    match token {
+        PurgeToken::Valid(token) => Some(token),
+        PurgeToken::Invalid(cause) => {
+            ui.warn(&format!("  {cause}"));
+
+            None
+        }
+        PurgeToken::Absent => None,
+    }
+}
+
+/// `jobs` reads `cron.job` and calls the retention functions over SQL, never
+/// the Data API: through the Management API with `--project-ref`, else over a
+/// direct connection.
+fn run_jobs(args: &JobsArgs, context: &Context<'_>, ui: &mut Ui) -> i32 {
+    // clap checks a conflict between global flags only when both sit on the
+    // same side of the subcommand.
+    if args.project_ref.is_some() && args.db_url.is_some() {
+        return render_parse_error(
+            &clap::Error::raw(
+                clap::error::ErrorKind::ArgumentConflict,
+                "the argument '--project-ref <REF>' cannot be used with '--db-url <URL>'\n",
+            ),
+            ui,
+        );
+    }
 
     let action = match &args.command {
         JobsCommand::List => jobs::JobsAction::List,
@@ -663,13 +815,29 @@ fn run_jobs(args: &JobsArgs, context: &Context<'_>, ui: &mut Ui) -> i32 {
             JobArg::All => jobs::JobsAction::RunAll,
         },
     };
+    let flags = jobs::JobsFlags {
+        json: args.json,
+        management_api: args.project_ref.is_some(),
+    };
+    if let Some(project_ref) = args.project_ref.as_ref() {
+        let transport = TransportArgs {
+            db_url: None,
+            project_ref: Some(project_ref.clone()),
+            access_token: args.access_token.clone(),
+        };
 
-    jobs::run(
-        action,
-        &jobs::JobsFlags { json: args.json },
-        &PgApplier::new(&url),
-        ui,
-    )
+        return with_applier(&transport, context, true, ui, &mut |api, ui| {
+            jobs::run(action, &flags, api, ui)
+        });
+    }
+
+    let Some(url) =
+        resolve_connection("kizunasync jobs", args.db_url.as_deref(), context, true, ui)
+    else {
+        return UNUSABLE;
+    };
+
+    jobs::run(action, &flags, &PgApplier::new(&url), ui)
 }
 
 /// The clap value enums, translated into the vocabulary the commands read.
@@ -1172,6 +1340,159 @@ mod tests {
         assert!(capture.stderr().contains("cannot be used with"));
     }
 
+    /// `deprovision` and every `jobs` subcommand refuse both transports at
+    /// once with the same parse error as the other commands, whichever side
+    /// of the subcommand the `jobs` flags sit on.
+    #[test]
+    fn deprovision_and_jobs_refuse_both_transports_at_once() {
+        for argv in [
+            &[
+                "deprovision",
+                "--db-url",
+                "postgres://x",
+                "--project-ref",
+                "abcd",
+            ][..],
+            &[
+                "jobs",
+                "list",
+                "--db-url",
+                "postgres://x",
+                "--project-ref",
+                "abcd",
+            ][..],
+            &[
+                "jobs",
+                "--project-ref",
+                "abcd",
+                "run",
+                "reap",
+                "--db-url",
+                "postgres://x",
+            ][..],
+            &[
+                "jobs",
+                "--db-url",
+                "postgres://x",
+                "--project-ref",
+                "abcd",
+                "schedule",
+            ][..],
+        ] {
+            let (_guard, session) = empty_session();
+            let (code, capture) = drive(argv, &session);
+
+            assert_eq!(code, UNUSABLE, "{argv:?}");
+            assert!(
+                capture.stderr().contains("cannot be used with"),
+                "{argv:?}: {}",
+                capture.stderr()
+            );
+        }
+    }
+
+    /// `--project-ref` routes `deprovision` and `jobs` through the Management
+    /// API, which resolves its token the way `init --project-ref` does, before
+    /// any direct connection is sought.
+    #[test]
+    fn deprovision_and_jobs_over_a_project_ref_resolve_a_token_not_a_database() {
+        for argv in [
+            &["deprovision", "--project-ref", "abcd", "--dry-run"][..],
+            &["deprovision", "--purge", "--yes", "--project-ref", "abcd"][..],
+            &["jobs", "list", "--project-ref", "abcd"][..],
+            &["jobs", "--project-ref", "abcd", "run", "all"][..],
+            &["jobs", "schedule", "--project-ref", "abcd"][..],
+        ] {
+            let (_guard, session) = empty_session();
+            let (code, capture) = drive(argv, &session);
+            let stderr = capture.stderr();
+
+            assert_eq!(code, UNUSABLE, "{argv:?}: {stderr}");
+            assert!(
+                stderr.contains("no Supabase Personal Access Token"),
+                "{argv:?}: {stderr}"
+            );
+            assert!(
+                !stderr.contains("could not resolve a database connection"),
+                "{argv:?}: {stderr}"
+            );
+            assert_eq!(capture.stdout(), "", "{argv:?}");
+        }
+    }
+
+    /// A purge over a direct connection checks `--access-token` the way
+    /// `--project-ref` does, before it connects to anything.
+    #[test]
+    fn a_purge_refuses_an_access_token_that_is_not_one_before_connecting() {
+        let (_guard, session) = empty_session();
+        let (code, capture) = drive(
+            &[
+                "deprovision",
+                "--purge",
+                "--yes",
+                "--db-url",
+                "postgres://127.0.0.1:1/x",
+                "--access-token",
+                "eyJhbGciOiJIUzI1NiJ9.e30.x",
+            ],
+            &session,
+        );
+        let stderr = capture.stderr();
+
+        assert_eq!(code, UNUSABLE, "{stderr}");
+        assert!(
+            stderr.contains("that is not a Personal Access Token (sbp_…)"),
+            "{stderr}"
+        );
+        assert!(!stderr.contains("could not connect"), "{stderr}");
+    }
+
+    /// An environment value that is not a token warns once, and the purge
+    /// falls back to the by-hand step; a missing one says nothing.
+    #[test]
+    fn an_environment_token_that_is_not_one_warns_and_is_not_used() {
+        for (pairs, warned) in [
+            (
+                &[("SUPABASE_ACCESS_TOKEN", "eyJhbGciOiJIUzI1NiJ9.e30.x")][..],
+                true,
+            ),
+            (&[][..], false),
+        ] {
+            let env = Env::from_pairs(pairs);
+            let (mut ui, capture) = Ui::capture();
+            let token = purge_token(None, &env, &mut ui).unwrap();
+
+            assert!(usable_token(token, &mut ui).is_none(), "{pairs:?}");
+            assert_eq!(
+                capture
+                    .stderr()
+                    .matches("that is not a Personal Access Token")
+                    .count(),
+                usize::from(warned),
+                "{pairs:?}: {}",
+                capture.stderr()
+            );
+        }
+    }
+
+    /// `--local-only` is refused on `deprovision` whichever transport is named.
+    #[test]
+    fn deprovision_local_only_is_refused_over_a_project_ref_too() {
+        let (_guard, session) = empty_session();
+        let (code, capture) = drive(
+            &["deprovision", "--local-only", "--project-ref", "abcd"],
+            &session,
+        );
+
+        assert_eq!(code, UNUSABLE);
+        assert!(
+            capture
+                .stderr()
+                .contains("--local-only has no ledger to read")
+        );
+        assert!(!capture.stderr().contains("Personal Access Token"));
+    }
+
     #[test]
     fn status_json_and_quiet_are_mutually_exclusive() {
         let (_guard, session) = empty_session();
@@ -1390,21 +1711,26 @@ mod tests {
     /// every command that takes it, before a token or a transport is sought.
     #[test]
     fn an_invalid_project_ref_is_refused_while_the_flags_are_parsed() {
-        for argv in [
-            ["init", "--project-ref", "evil.example/x#"],
-            ["sync", "--project-ref", "ABC"],
-            ["status", "--project-ref", "a-b"],
-            ["doctor", "--project-ref", "a b"],
-            ["lint", "--project-ref", "a/b"],
-            ["upgrade", "--project-ref", ""],
+        for (argv, value) in [
+            (
+                &["init", "--project-ref", "evil.example/x#"][..],
+                "evil.example/x#",
+            ),
+            (&["sync", "--project-ref", "ABC"][..], "ABC"),
+            (&["status", "--project-ref", "a-b"][..], "a-b"),
+            (&["doctor", "--project-ref", "a b"][..], "a b"),
+            (&["lint", "--project-ref", "a/b"][..], "a/b"),
+            (&["upgrade", "--project-ref", ""][..], ""),
+            (&["deprovision", "--project-ref", "a.b"][..], "a.b"),
+            (&["jobs", "list", "--project-ref", "A1"][..], "A1"),
         ] {
             let (_guard, session) = empty_session();
-            let (code, capture) = drive(&argv, &session);
+            let (code, capture) = drive(argv, &session);
             let stderr = capture.stderr();
 
             assert_eq!(code, UNUSABLE, "{argv:?}: {stderr}");
             assert!(
-                stderr.contains(&format!("invalid value '{}' for '--project-ref", argv[2])),
+                stderr.contains(&format!("invalid value '{value}' for '--project-ref")),
                 "{argv:?}: {stderr}"
             );
             assert!(

@@ -3,13 +3,15 @@ Remove every ledgered Kizuna object from the project
 Usage: kizunasync deprovision [OPTIONS]
 
 Options:
-      --dry-run           Show the plan and change nothing
-  -v, --version           Print the version and exit
-      --no-color          Never emit ANSI colour (also honoured: NO_COLOR)
-      --yes               Apply the destructive plan (else KSYNC_ALLOW_DEPROVISION=1)
-      --purge             Also drop the schema: every table, sequence, index, policy, and grant
-      --workdir <PATH>    Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
-      --confirm <TARGET>  Type the project ref, or "local", to confirm --purge (--yes is not enough)
-      --local-only        Refused: the ledger lives in your project database
-      --db-url <URL>      Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
-  -h, --help              Print help
+      --dry-run               Show the plan and change nothing
+  -v, --version               Print the version and exit
+      --no-color              Never emit ANSI colour (also honoured: NO_COLOR)
+      --yes                   Apply the destructive plan (else KSYNC_ALLOW_DEPROVISION=1)
+      --purge                 Also drop the schema: every table, sequence, index, policy, and grant
+      --workdir <PATH>        Project root (else SUPABASE_WORKDIR, else the nearest supabase/config.toml above the cwd)
+      --confirm <TARGET>      Type the project ref, or "local", to confirm --purge (--yes is not enough)
+      --local-only            Refused: the ledger lives in your project database
+      --db-url <URL>          Postgres connection string (else KSYNC_DB_URL, DIRECT_URL, POSTGRES_URL_NON_POOLING, DATABASE_URL, POSTGRES_URL, supabase/config.toml)
+      --project-ref <REF>     Drive the Supabase Management API against this project instead
+      --access-token <TOKEN>  Personal Access Token for --project-ref (else SUPABASE_ACCESS_TOKEN)
+  -h, --help                  Print help

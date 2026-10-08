@@ -926,19 +926,19 @@ mod tests {
     #[test]
     fn a_long_hint_goes_under_its_label_on_rows_of_its_own() {
         let plain = |text: &str| text.to_owned();
-        let item = "● Background jobs ";
-        let hint = "(unavailable over the Management API: needs a direct Postgres connection)";
+        let item = "● Update the pack ";
+        let hint = "(this CLI's pack differs · re-apply and record its hash)";
 
         assert_eq!(
             hinted_rows("│", item, "(short)", 77, plain),
-            "│  ● Background jobs (short)\n"
+            "│  ● Update the pack (short)\n"
         );
         let rows = hinted_rows("│", item, hint, 45, plain);
         assert_eq!(
             rows,
-            "│  ● Background jobs\n\
-             │    (unavailable over the Management API: needs\n\
-             │    a direct Postgres connection)\n"
+            "│  ● Update the pack\n\
+             │    (this CLI's pack differs · re-apply and\n\
+             │    record its hash)\n"
         );
         for row in rows.lines() {
             assert!(console::measure_text_width(row) <= 45 + BAR_LEAD, "{row:?}");

@@ -2,7 +2,9 @@
 //! matching subcommand calls, over the connection the panel opened, and asks
 //! the panel's own confirmation before a command that writes runs with `yes`.
 
-use crate::commands::deprovision::{self, Delivery, DeprovisionRequest, MigrationPush};
+use crate::commands::deprovision::{
+    self, Delivery, DeprovisionRequest, Exposure, ExposureTarget, MigrationPush,
+};
 use crate::commands::doctor::{self, DoctorFlags};
 use crate::commands::init::{DirectConnection, STEP_BACK, WizardConnection, stop_for};
 use crate::commands::jobs::{self, Job, JobsAction, JobsFlags};
@@ -21,7 +23,7 @@ use crate::wizard::{Ladder, Reached};
 
 use super::Panel;
 use super::equivalent::Reach;
-use super::menu::{JOB_MESSAGE, JOBS_MESSAGE, NEEDS_DIRECT, PanelAction, job_menu, jobs_menu};
+use super::menu::{JOB_MESSAGE, JOBS_MESSAGE, PanelAction, job_menu, jobs_menu};
 use super::state::JobsSummary;
 
 /// Where an action left the panel.
@@ -33,8 +35,8 @@ pub(crate) enum Outcome {
     /// It applied a change with these arguments, so Backspace never reaches a
     /// step before the panel again.
     Applied(Vec<String>),
-    /// Nothing ran: the user declined or went back, or the item cannot run
-    /// over this connection.
+    /// Nothing ran: the user declined or went back, or a refusal stopped the
+    /// item with its reason on the `Ui`.
     Nothing,
     /// The user closed the panel.
     Exit,
@@ -85,7 +87,7 @@ pub(crate) fn perform(
         }
         PanelAction::RemoveKizuna => remove(panel, ports, ui),
         PanelAction::Exit => Ok(Outcome::Exit),
-        PanelAction::ListJobs => list_jobs(panel, ui),
+        PanelAction::ListJobs => Ok(list_jobs(panel, ui)),
         PanelAction::RunJobNow => pick_job(panel, ports, ui).map(settled),
         PanelAction::RescheduleJobs => reschedule_jobs(panel, ports, ui).map(settled),
         PanelAction::RunJob(job) => run_job(panel, job, ports, ui).map(settled),
@@ -133,19 +135,6 @@ fn stepped<T>(asked: prompts::Result<T>, ui: &mut Ui) -> Result<Option<T>, Outco
         Err(PromptError::Back) => Ok(None),
         Err(PromptError::Cancelled) => Err(Outcome::Cancelled),
         Err(error) => Err(Outcome::Stop(stop_for(&error, ui))),
-    }
-}
-
-/// The direct connection an item needs, or `Nothing` once the reason it cannot
-/// run over the Management API is on `ui`.
-fn direct<'p>(panel: &'p Panel<'_>, ui: &mut Ui) -> Result<&'p DirectConnection, Outcome> {
-    match panel.connection {
-        WizardConnection::Direct(direct) => Ok(direct),
-        WizardConnection::Remote { .. } => {
-            ui.warn(&format!("  {NEEDS_DIRECT}."));
-
-            Err(Outcome::Nothing)
-        }
     }
 }
 
@@ -491,7 +480,6 @@ fn show_status(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Ac
 /// The jobs submenu. Backspace on a question it leads to reopens it on the
 /// item that led there; Backspace on it returns to the panel.
 fn background_jobs(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Acted {
-    direct(panel, ui)?;
     let mut chosen = None;
     loop {
         let action = answered(
@@ -515,17 +503,23 @@ fn background_jobs(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -
     }
 }
 
-fn list_jobs(panel: &Panel<'_>, ui: &mut Ui) -> Acted {
-    direct(panel, ui)?;
-    jobs::run(JobsAction::List, &JobsFlags::default(), panel.applier, ui);
+fn list_jobs(panel: &Panel<'_>, ui: &mut Ui) -> Outcome {
+    jobs::run(JobsAction::List, &jobs_flags(panel), panel.applier, ui);
 
-    Ok(ran(&["jobs", "list"]))
+    ran(&["jobs", "list"])
+}
+
+/// The `jobs` flags of the panel's connection.
+fn jobs_flags(panel: &Panel<'_>) -> JobsFlags {
+    JobsFlags {
+        management_api: matches!(panel.connection, WizardConnection::Remote { .. }),
+        ..JobsFlags::default()
+    }
 }
 
 /// The job picker, then the run confirmation, which Backspace leaves for the
 /// picker on the same job.
 fn pick_job(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Stepped {
-    direct(panel, ui)?;
     let mut chosen = None;
     loop {
         let Some(action) = stepped(
@@ -551,7 +545,6 @@ fn pick_job(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Stepp
 }
 
 fn run_job(panel: &Panel<'_>, job: Job, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Stepped {
-    direct(panel, ui)?;
     let question = format!("Run {}() now?", job.function());
     let Some(run) = stepped(lent_prompter(ports, ui)?.confirm(&question, true), ui)? else {
         return Ok(None);
@@ -560,12 +553,7 @@ fn run_job(panel: &Panel<'_>, job: Job, ports: &mut SmartPorts<'_>, ui: &mut Ui)
         return Ok(Some(Outcome::Nothing));
     }
 
-    jobs::run(
-        JobsAction::Run(job),
-        &JobsFlags::default(),
-        panel.applier,
-        ui,
-    );
+    jobs::run(JobsAction::Run(job), &jobs_flags(panel), panel.applier, ui);
 
     Ok(Some(applied(&["jobs", "run", job.label()])))
 }
@@ -574,7 +562,6 @@ fn run_job(panel: &Panel<'_>, job: Job, ports: &mut SmartPorts<'_>, ui: &mut Ui)
 /// confirmation reopens the jobs submenu, unless the gate re-applied the pack,
 /// which returns to the panel to read the project again.
 fn reschedule_jobs(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Stepped {
-    direct(panel, ui)?;
     let reapplied = gate_first(panel, ports, ui)?;
     let question = "Reschedule the three jobs from kizunasync._settings now?";
     let answer = stepped(lent_prompter(ports, ui)?.confirm(question, true), ui);
@@ -582,12 +569,7 @@ fn reschedule_jobs(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -
         Ok(None) if !reapplied => return Ok(None),
         Ok(None | Some(false)) => Outcome::Nothing,
         Ok(Some(true)) => {
-            jobs::run(
-                JobsAction::Schedule,
-                &JobsFlags::default(),
-                panel.applier,
-                ui,
-            );
+            jobs::run(JobsAction::Schedule, &jobs_flags(panel), panel.applier, ui);
 
             applied(&["jobs", "schedule"])
         }
@@ -599,34 +581,78 @@ fn reschedule_jobs(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -
 
 // MARK: - removal
 
+/// The list a purge over a direct connection edits: the Management API client
+/// the opener built for a hosted target a token reaches, else the local
+/// stack's `supabase/config.toml`, else the warning
+/// ([`deprovision::exposure_target`]).
+fn direct_exposure<'p>(panel: &Panel<'p>, connection: &DirectConnection) -> Exposure<'p> {
+    if let Some((project_ref, api)) = panel.exposure {
+        return Exposure::ManagementApi { api, project_ref };
+    }
+
+    match deprovision::exposure_target(connection, panel.context.paths, None, false) {
+        ExposureTarget::ConfigToml => Exposure::ConfigToml(&panel.context.paths.config_toml),
+        ExposureTarget::ManagementApi(_) | ExposureTarget::ByHand => Exposure::ByHand,
+    }
+}
+
 /// `deprovision`'s dry run, the target typed out, the purge question, then the
-/// apply with `--yes`, and `--purge --confirm <target>` when asked for.
+/// apply with `--yes`, and `--purge --confirm <target>` when asked for. Over
+/// the Management API the target is the project ref, the teardown runs
+/// through the API as one transaction, and a purge then takes `kizunasync`
+/// out of the project's exposed schemas.
 fn remove(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Acted {
-    let connection = direct(panel, ui)?;
-    let url = connection.url.as_str();
     let env = panel.context.env;
     let execute = |sql: &str| panel.applier.run_script(sql);
-    let delivery = if deprovision::delivers_by_migration(panel.context.paths) {
-        Delivery::Migration(MigrationPush {
-            direct: connection,
-            paths: panel.context.paths,
-            schemas: ports.init.schemas,
-            supabase: ports.init.supabase,
-            now_unix: ports.init.now_unix,
-        })
-    } else {
-        Delivery::Direct(&execute)
+    let (expected, delivery, exposure) = match panel.connection {
+        WizardConnection::Direct(connection)
+            if deprovision::delivers_by_migration(panel.context.paths) =>
+        {
+            (
+                deprovision::expected_confirmation(&connection.url),
+                Delivery::Migration(MigrationPush {
+                    direct: connection,
+                    paths: panel.context.paths,
+                    schemas: ports.init.schemas,
+                    supabase: ports.init.supabase,
+                    now_unix: ports.init.now_unix,
+                }),
+                direct_exposure(panel, connection),
+            )
+        }
+        WizardConnection::Direct(connection) => (
+            deprovision::expected_confirmation(&connection.url),
+            Delivery::Direct(&execute),
+            direct_exposure(panel, connection),
+        ),
+        WizardConnection::Remote { project_ref, .. } => (
+            project_ref.to_string(),
+            Delivery::Direct(&execute),
+            panel
+                .exposure
+                .map_or(Exposure::ByHand, |(project_ref, api)| {
+                    Exposure::ManagementApi { api, project_ref }
+                }),
+        ),
     };
     let dry_run = DeprovisionRequest {
         dry_run: true,
         ..DeprovisionRequest::default()
     };
-    let planned = deprovision::run_over(panel.applier, url, &dry_run, &delivery, env, ui);
+    let planned = deprovision::run_over(
+        panel.applier,
+        &expected,
+        &dry_run,
+        &delivery,
+        &exposure,
+        env,
+        ui,
+    );
     if planned != OK {
         return Ok(ran(&["deprovision", "--dry-run"]));
     }
+    deprovision::announce_exposure(&exposure, ui);
 
-    let expected = deprovision::expected_confirmation(url);
     let prompter = lent_prompter(ports, ui)?;
     let message = format!("Type \"{expected}\" to remove Kizuna from this database");
     let mut typed = None;
@@ -654,7 +680,15 @@ fn remove(panel: &Panel<'_>, ports: &mut SmartPorts<'_>, ui: &mut Ui) -> Acted {
         confirm: purge.then_some(expected.as_str()),
         ..DeprovisionRequest::default()
     };
-    deprovision::run_over(panel.applier, url, &request, &delivery, env, ui);
+    deprovision::run_over(
+        panel.applier,
+        &expected,
+        &request,
+        &delivery,
+        &exposure,
+        env,
+        ui,
+    );
     let mut args = vec!["deprovision".to_owned(), "--yes".to_owned()];
     if purge {
         args.extend(["--purge".to_owned(), "--confirm".to_owned(), expected]);

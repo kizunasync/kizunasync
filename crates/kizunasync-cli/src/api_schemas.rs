@@ -8,7 +8,8 @@
 //! inserts into the original string, so comments, key order, blank lines, and
 //! line endings outside the edit survive untouched. Single-line and multi-line
 //! arrays are both patched. A body that does not parse is reported as
-//! `Unparseable` and left alone.
+//! `Unparseable` and left alone. `deprovision --purge` takes the entry out
+//! again the same way: only the entry and its separator go.
 
 use std::ops::Range;
 
@@ -50,6 +51,29 @@ pub struct Patch {
     pub body: String,
     /// What had to be done.
     pub outcome: PatchOutcome,
+}
+
+/// What removing `kizunasync` from the config body had to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnpatchOutcome {
+    /// The entry and its separator were removed.
+    Removed,
+    /// `[api].schemas` does not list `kizunasync`.
+    NotPresent,
+    /// `kizunasync` is the only entry: an empty list would expose nothing, so
+    /// it stays.
+    OnlyEntry,
+    /// The body does not parse as TOML: reported, never rewritten.
+    Unparseable,
+}
+
+/// The result of [`unpatch_api_schemas`].
+#[derive(Debug, Clone)]
+pub struct Unpatch {
+    /// The new config body (unchanged unless the outcome is `Removed`).
+    pub body: String,
+    /// What had to be done.
+    pub outcome: UnpatchOutcome,
 }
 
 /// The exact line written, and the one `doctor` tells a user to add by hand.
@@ -128,6 +152,143 @@ pub fn patch_api_schemas(config_body: &str) -> Patch {
             outcome: PatchOutcome::Inserted,
         },
     )
+}
+
+/// Remove `kizunasync` from `[api].schemas`. Pure and byte-preserving outside
+/// the removal; every outcome but `Removed` returns the input unchanged.
+#[must_use]
+pub fn unpatch_api_schemas(config_body: &str) -> Unpatch {
+    let unchanged = |outcome| Unpatch {
+        body: config_body.to_owned(),
+        outcome,
+    };
+    let Ok(config) = parse(config_body) else {
+        return unchanged(UnpatchOutcome::Unparseable);
+    };
+    let Some(schemas) = config.api.schemas else {
+        return unchanged(UnpatchOutcome::NotPresent);
+    };
+
+    let entries = schemas.get_ref();
+    let Some(index) = entries.iter().position(|entry| entry.get_ref() == SCHEMA) else {
+        return unchanged(UnpatchOutcome::NotPresent);
+    };
+    if entries.len() == 1 {
+        return unchanged(UnpatchOutcome::OnlyEntry);
+    }
+
+    // A removal whose result does not parse is never handed out to be written.
+    remove_entry(config_body, entries, index)
+        .filter(|body| parse(body).is_ok())
+        .map_or_else(
+            || unchanged(UnpatchOutcome::Unparseable),
+            |body| Unpatch {
+                body,
+                outcome: UnpatchOutcome::Removed,
+            },
+        )
+}
+
+/// `body` without entry `index` and its separator, or `None` when a span the
+/// parser reported does not fit this body. An entry sharing its line with a
+/// neighbour goes with the gap between them; any other goes by
+/// [`line_removal`].
+fn remove_entry(body: &str, entries: &[Spanned<String>], index: usize) -> Option<String> {
+    let entry = entries.get(index)?.span();
+    let previous = index
+        .checked_sub(1)
+        .and_then(|at| entries.get(at))
+        .map(Spanned::span);
+    let next = entries.get(index + 1).map(Spanned::span);
+    let same_line =
+        |from: usize, to: usize| body.get(from..to).is_some_and(|gap| !gap.contains('\n'));
+    let (separator, removed) = if let Some(previous) = previous
+        .as_ref()
+        .filter(|previous| same_line(previous.end, entry.start))
+    {
+        (None, previous.end..entry.end)
+    } else if let Some(next) = next
+        .as_ref()
+        .filter(|next| same_line(entry.end, next.start))
+    {
+        (None, entry.start..next.start)
+    } else {
+        line_removal(body, &entry, previous.as_ref(), next.is_none())?
+    };
+
+    Some(cut(
+        body,
+        &separator
+            .map(|at| at..at + 1)
+            .into_iter()
+            .chain([removed])
+            .collect::<Vec<_>>(),
+    ))
+}
+
+/// The removal of an entry no other entry shares a line with: the whole
+/// line, its comment included, when nothing else is on it but commas, else the
+/// entry and its own comma. A `last` entry with no comma of its own also takes
+/// the comma after `previous`, its separator, unless that comma is on the
+/// removed line (the leading-comma style).
+fn line_removal(
+    body: &str,
+    entry: &Range<usize>,
+    previous: Option<&Range<usize>>,
+    last: bool,
+) -> Option<(Option<usize>, Range<usize>)> {
+    let line = line_start(body, entry.start);
+    let line_end = body
+        .get(entry.end..)?
+        .find('\n')
+        .map_or(body.len(), |at| entry.end + at + 1);
+    let code = body
+        .get(entry.end..line_end)?
+        .split('#')
+        .next()
+        .unwrap_or_default();
+    let own_comma = code.find(',');
+    let removed = if matches!(body.get(line..entry.start)?.trim(), "" | ",")
+        && matches!(code.trim(), "" | ",")
+    {
+        line..line_end
+    } else {
+        entry.start..own_comma.map_or(entry.end, |at| entry.end + at + 1)
+    };
+    let separator = previous
+        .filter(|_| last && own_comma.is_none())
+        .and_then(|previous| comma_after(body, previous.end))
+        .filter(|at| *at < removed.start);
+
+    Some((separator, removed))
+}
+
+/// The offset of the first comma at or after `from` outside a comment: the
+/// separator after an array entry. The text between two entries holds no
+/// strings, so every `#` in it opens a comment.
+fn comma_after(body: &str, from: usize) -> Option<usize> {
+    let mut offset = from;
+    for line in body.get(from..)?.split_inclusive('\n') {
+        if let Some(at) = line.split('#').next().unwrap_or_default().find(',') {
+            return Some(offset + at);
+        }
+        offset += line.len();
+    }
+
+    None
+}
+
+/// `body` without `ranges`, which are ascending and do not overlap.
+fn cut(body: &str, ranges: &[Range<usize>]) -> String {
+    let mut kept = String::with_capacity(body.len());
+    let mut cursor = 0;
+    for range in ranges {
+        kept.push_str(body.get(cursor..range.start).unwrap_or_default());
+        cursor = range.end;
+    }
+    kept.push_str(body.get(cursor..).unwrap_or_default());
+
+    kept
 }
 
 /// `kizunasync` inserted as the array's last entry, or `None` when the span the
@@ -624,5 +785,197 @@ mod tests {
                 "schemas = [\"public\", \"graphql_public\", \"kizunasync\"]"
             )
         );
+    }
+
+    // MARK: - removal
+
+    /// The unpatched body parses, no longer lists `kizunasync`, keeps every
+    /// other entry, and differs from the input only by removed bytes.
+    fn unpatched(body: &str) -> Unpatch {
+        let unpatch = unpatch_api_schemas(body);
+        let listed = read_api_schemas(&unpatch.body).expect("the unpatched body parses");
+        assert!(
+            !listed.iter().any(|entry| entry == SCHEMA),
+            "{}",
+            unpatch.body
+        );
+        for entry in read_api_schemas(body).unwrap_or_default() {
+            assert!(
+                entry == SCHEMA || listed.contains(&entry),
+                "{entry} lost: {}",
+                unpatch.body
+            );
+        }
+        let mut rest = body;
+        for c in unpatch.body.chars() {
+            let at = rest
+                .find(c)
+                .expect("every kept byte was in the input, in order");
+            rest = &rest[at + c.len_utf8()..];
+        }
+
+        unpatch
+    }
+
+    #[test]
+    fn a_single_line_array_loses_the_entry_and_its_separator() {
+        for (body, expected) in [
+            (
+                "# top\n[api]\nport = 54321\nschemas = [\"public\", \"kizunasync\", \"graphql_public\"]\n\n[db]\nport = 54322\n",
+                "# top\n[api]\nport = 54321\nschemas = [\"public\", \"graphql_public\"]\n\n[db]\nport = 54322\n",
+            ),
+            (
+                "[api]\nschemas = [\"public\", \"graphql_public\", \"kizunasync\"]\n",
+                "[api]\nschemas = [\"public\", \"graphql_public\"]\n",
+            ),
+            (
+                "[api]\nschemas = [\"kizunasync\", \"public\"]\n",
+                "[api]\nschemas = [\"public\"]\n",
+            ),
+            (
+                "[api]\nschemas = [ \"public\" , 'kizunasync' , ]\n",
+                "[api]\nschemas = [ \"public\" , ]\n",
+            ),
+        ] {
+            let unpatch = unpatched(body);
+
+            assert_eq!(unpatch.outcome, UnpatchOutcome::Removed, "{body}");
+            assert_eq!(unpatch.body, expected);
+        }
+    }
+
+    #[test]
+    fn a_multi_line_array_loses_the_whole_line_of_a_middle_entry() {
+        let unpatch = unpatched(
+            "[api]\nschemas = [\n  \"public\",\n  \"kizunasync\", # ours\n  \"graphql_public\",\n]\nmax_rows = 1000\n",
+        );
+
+        assert_eq!(unpatch.outcome, UnpatchOutcome::Removed);
+        assert_eq!(
+            unpatch.body,
+            "[api]\nschemas = [\n  \"public\",\n  \"graphql_public\",\n]\nmax_rows = 1000\n"
+        );
+    }
+
+    #[test]
+    fn a_multi_line_last_entry_with_a_trailing_comma_loses_its_line() {
+        let unpatch = unpatched("[api]\nschemas = [\n    \"public\",\n    \"kizunasync\",\n]\n");
+
+        assert_eq!(unpatch.body, "[api]\nschemas = [\n    \"public\",\n]\n");
+    }
+
+    /// Without a trailing comma, the last entry's separator is the comma
+    /// before it, which goes with it; the comment on that line stays.
+    #[test]
+    fn a_multi_line_last_entry_without_a_trailing_comma_takes_the_separator_before_it() {
+        let unpatch = unpatched("[api]\nschemas = [\n  \"public\", # a, b\n  \"kizunasync\"\n]\n");
+
+        assert_eq!(unpatch.body, "[api]\nschemas = [\n  \"public\" # a, b\n]\n");
+    }
+
+    #[test]
+    fn a_first_entry_alone_on_its_line_loses_its_line() {
+        let unpatch = unpatched("[api]\nschemas = [\n  \"kizunasync\",\n  \"public\",\n]\n");
+
+        assert_eq!(unpatch.outcome, UnpatchOutcome::Removed);
+        assert_eq!(unpatch.body, "[api]\nschemas = [\n  \"public\",\n]\n");
+    }
+
+    /// In the leading-comma style the comma that opens the entry's line is
+    /// its separator, and goes with the line.
+    #[test]
+    fn a_leading_comma_entry_loses_its_line_with_its_comma() {
+        for (body, expected) in [
+            (
+                "[api]\nschemas = [\n  \"public\"\n  , \"kizunasync\"\n  , \"graphql_public\"\n]\n",
+                "[api]\nschemas = [\n  \"public\"\n  , \"graphql_public\"\n]\n",
+            ),
+            (
+                "[api]\nschemas = [\n  \"public\"\n  , \"kizunasync\"\n]\n",
+                "[api]\nschemas = [\n  \"public\"\n]\n",
+            ),
+        ] {
+            let unpatch = unpatched(body);
+
+            assert_eq!(unpatch.outcome, UnpatchOutcome::Removed, "{body}");
+            assert_eq!(unpatch.body, expected);
+        }
+    }
+
+    /// A removal that would leave a body that does not parse is not written:
+    /// the leading-comma style's first entry hands its line's comma to an
+    /// entry that cannot carry one.
+    #[test]
+    fn a_removal_that_would_not_parse_is_reported_and_never_written() {
+        let body = "[api]\nschemas = [\n  \"kizunasync\"\n  , \"public\"\n]\n";
+        let unpatch = unpatch_api_schemas(body);
+
+        assert_eq!(unpatch.outcome, UnpatchOutcome::Unparseable);
+        assert_eq!(unpatch.body, body);
+    }
+
+    #[test]
+    fn crlf_endings_survive_a_removal() {
+        let unpatch = unpatched(
+            "[api]\r\nschemas = [\r\n  \"public\",\r\n  \"kizunasync\",\r\n]\r\n[db]\r\n",
+        );
+
+        assert_eq!(
+            unpatch.body,
+            "[api]\r\nschemas = [\r\n  \"public\",\r\n]\r\n[db]\r\n"
+        );
+    }
+
+    #[test]
+    fn a_config_that_does_not_list_the_schema_is_left_unchanged() {
+        for body in [
+            "[api]\nschemas = [\"public\", \"graphql_public\"]\n",
+            "[api]\nschemas = [\n  \"public\",\n]\n",
+            "[api]\nport = 54321\n",
+            "[db]\nport = 54322\n",
+        ] {
+            let unpatch = unpatch_api_schemas(body);
+
+            assert_eq!(unpatch.outcome, UnpatchOutcome::NotPresent, "{body}");
+            assert_eq!(unpatch.body, body);
+        }
+    }
+
+    /// An empty list would expose nothing at all, so the only entry stays,
+    /// the same rule the Management API path follows.
+    #[test]
+    fn the_only_entry_stays_listed() {
+        for body in [
+            "[api]\nschemas = [\"kizunasync\"]\n",
+            "[api]\nschemas = [\n  \"kizunasync\", # ours\n]\n",
+        ] {
+            let unpatch = unpatch_api_schemas(body);
+
+            assert_eq!(unpatch.outcome, UnpatchOutcome::OnlyEntry, "{body}");
+            assert_eq!(unpatch.body, body);
+        }
+    }
+
+    #[test]
+    fn an_unparseable_body_is_reported_and_never_rewritten_by_a_removal() {
+        for body in [
+            "[api]\nschemas = [\n  \"kizunasync\",\n",
+            "[api]\nschemas = [\"kizunasync\"]\n[api]\n",
+        ] {
+            let unpatch = unpatch_api_schemas(body);
+
+            assert_eq!(unpatch.outcome, UnpatchOutcome::Unparseable, "{body}");
+            assert_eq!(unpatch.body, body);
+        }
+    }
+
+    /// A removal undoes the insertion `init` made in a single-line array.
+    #[test]
+    fn removing_after_patching_the_supabase_template_restores_it() {
+        let body = "project_id = \"demo\"\n\n[api]\nenabled = true\n# Schemas to expose in your API.\nschemas = [\"public\", \"graphql_public\"]\nmax_rows = 1000\n";
+        let unpatch = unpatched(&patch_api_schemas(body).body);
+
+        assert_eq!(unpatch.outcome, UnpatchOutcome::Removed);
+        assert_eq!(unpatch.body, body);
     }
 }

@@ -12,8 +12,8 @@ Remove Kizuna from a Supabase project without putting your application data at r
 
 ## Before you begin
 
-- Provide a direct [database connection](./cli.md#database-connection), through `--db-url`, a connection-string environment variable such as `KSYNC_DB_URL` or `DATABASE_URL`, an environment file, or the local Supabase config fallback. The ledger lives in the project database, so there is no offline path.
-- Back up anything you may need. Applying this command is destructive even though its scope is bound to the ledger. In a project with a `supabase/config.toml`, the teardown is a migration applied with [`supabase db push`](https://supabase.com/docs/reference/cli/supabase-db-push), so it lands in your migration history the way the install did. Anywhere else it runs over the connection as one transaction and writes no file.
+- Provide a direct [database connection](./cli.md#database-connection), through `--db-url`, a connection-string environment variable such as `KSYNC_DB_URL` or `DATABASE_URL`, an environment file, or the local Supabase config fallback. For a hosted project you can pass its ref with `--project-ref` instead, as [step 5](#5-remove-kizuna-from-a-hosted-project-with---project-ref) shows. The ledger lives in the project database, so there is no offline path.
+- Back up anything you may need. Applying this command is destructive even though its scope is bound to the ledger. In a project with a `supabase/config.toml`, the teardown is a migration applied with [`supabase db push`](https://supabase.com/docs/reference/cli/supabase-db-push), so it lands in your migration history the way the install did. Anywhere else, and always over `--project-ref`, it runs as one transaction and writes no file.
 - A shell sitting in the application project, since the ledger read starts from the [project root](./cli.md#project-root). Anywhere else, name it with `--workdir <path>`.
 
 ## 1. Preview the plan
@@ -104,7 +104,59 @@ bunx kizunasync deprovision --purge --yes --confirm local
 
 `--purge` extends the plan past the ledger into the schema itself. It drops every table, sequence, index, policy, and grant `kizunasync` carries, then every role whose name starts with `kizunasync`, keeping a role another database of the same server still uses. Those drops follow the ledger's own drops, in the same migration file in a project with a `supabase/config.toml` and in the same transaction anywhere else. The migration file carries the purge even when the ledger is already empty, so a replay of the directory removes what the earlier install files created. `--yes` alone never applies a purge. `--confirm` also needs the project ref the CLI parses from the connection. A connection that names no project ref takes the literal `local` instead. You type that value yourself, so a script that already sets `--yes` for a plain teardown cannot purge by accident. A purge never drops your application tables or their data, and neither does a plain teardown.
 
-You should now see the `kizunasync` schema gone entirely, and `kizunasync status` reporting the pack as not provisioned with no ledger to fall back on. Running [`kizunasync init`](./cli.md#kizunasync-init) again installs Kizuna afresh: the ledger is empty, so the files the earlier install left in `supabase/migrations/` do not count as installed, and `init` writes and pushes new ones.
+Before the purge drops the schema, the command removes `kizunasync` from the Data API's exposed schemas, which `init` added it to, because PostgREST stops serving every schema (`PGRST002`) when a schema it lists is missing. For the local stack with a `supabase/config.toml`, the command removes the entry from `[api].schemas`, leaves the rest of the file as it was, and reminds you to restart the local stack (`supabase stop`, then `supabase start`) after the purge, since the stack reads the file at start. For a hosted project reached directly, it edits the project's Data API settings through the Management API when `SUPABASE_ACCESS_TOKEN` holds a Personal Access Token, and never edits the local file. Otherwise the plan warns you to remove `kizunasync` from the project's exposed schemas yourself first (Project Settings, Data API), or to purge with `--project-ref`. When `kizunasync` is the only exposed schema, the purge is refused before anything changes. A plain teardown keeps the schema and its exposure.
+
+You should now see the `kizunasync` schema gone entirely, `kizunasync` gone from the exposed schemas, and `kizunasync status` reporting the pack as not provisioned with no ledger to fall back on. Running [`kizunasync init`](./cli.md#kizunasync-init) again installs Kizuna afresh: the ledger is empty, so the files the earlier install left in `supabase/migrations/` do not count as installed, and `init` writes and pushes new ones.
+
+## 5. Remove Kizuna from a hosted project with `--project-ref`
+
+Set `SUPABASE_ACCESS_TOKEN` in the environment first. `kizunasync` reads it there, which keeps the token out of the command line and the process list.
+
+:::tabs{group=pm}
+```bash tab=npm
+npx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --dry-run
+
+npx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --yes
+```
+
+```bash tab=pnpm
+pnpm dlx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --dry-run
+
+pnpm dlx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --yes
+```
+
+```bash tab=yarn
+yarn dlx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --dry-run
+
+yarn dlx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --yes
+```
+
+```bash tab=bun
+bunx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --dry-run
+
+bunx kizunasync deprovision \
+  --project-ref <project-ref> \
+  --yes
+```
+:::
+
+The command reads the ledger and applies the teardown through the Management API's [run a query](https://supabase.com/docs/reference/api/v1-run-a-query) endpoint. The plan, the `pg_depend` refusal, and the `--yes` guard are the ones the steps above describe. The teardown always runs as one transaction, also in a project with a `supabase/config.toml`, and it writes no migration file, the same way `init --project-ref` installs without one. To purge, add `--purge` and type the same ref after `--confirm`, as in `--purge --yes --confirm <project-ref>`. Before the purge runs, the command removes `kizunasync` from the project's exposed schemas in its Data API settings and waits up to 60 seconds for the change to apply; when `kizunasync` is the only exposed schema, the purge is refused. The credential is a Personal Access Token, never one of your project's own keys. `--project-ref` and `--db-url` are mutually exclusive, and passing both exits `2`.
+
+You should now see the plan from the dry run, then the same summary a direct teardown prints, and [`kizunasync status --project-ref <project-ref>`](./cli.md#kizunasync-status) reporting what the matching step above leaves behind.
 
 ## Next steps
 

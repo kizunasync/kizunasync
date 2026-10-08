@@ -268,7 +268,7 @@ fn has_remote_tcp(config: &Config) -> bool {
     remote_name || remote_addr
 }
 
-fn is_loopback_host(name: &str) -> bool {
+pub(crate) fn is_loopback_host(name: &str) -> bool {
     let trimmed = name.trim().trim_matches(|c| c == '[' || c == ']');
     if trimmed.eq_ignore_ascii_case("localhost") {
         return true;

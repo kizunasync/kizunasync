@@ -13,7 +13,7 @@
 
 use crate::applier::Applier;
 use crate::commands::init::{STEP_BACK, cancel_or_stop};
-use crate::commands::panel::equivalent::{Reach, render_over, render_over_unknown_url};
+use crate::commands::panel::equivalent::{Reach, render_over};
 use crate::commands::upgrade::{self, ApplyEnd, Batch, UpgradeFlags, classify_batch};
 use crate::commands::{OK, UNUSABLE};
 use crate::prompts::{PromptError, Prompter};
@@ -243,25 +243,13 @@ fn command_over(reach: Option<Reach<'_>>, args: &[&str]) -> String {
 /// The next step once the database refused a re-apply over a column or a table
 /// it does not have. The pack's `create table if not exists` leaves a table an
 /// earlier build created as it is, so only a fresh install over `reach`
-/// reshapes it. `deprovision` takes no `--project-ref`, so over the Management
-/// API both commands name the project's direct connection instead.
+/// reshapes it.
 pub(crate) fn earlier_build_step(reach: Option<Reach<'_>>) -> String {
-    let remove = ["deprovision", "--purge"];
-    let (lead, remove, install) = match reach {
-        Some(Reach::ProjectRef(_)) => (
-            "The Management API path cannot run `kizunasync deprovision`, so remove Kizuna over the project's direct connection with",
-            render_over_unknown_url(&owned(&remove)),
-            render_over_unknown_url(&owned(&["init"])),
-        ),
-        Some(Reach::DbUrl(_)) | None => (
-            "Remove Kizuna with",
-            command_over(reach, &remove),
-            command_over(reach, &["init"]),
-        ),
-    };
+    let remove = command_over(reach, &["deprovision", "--purge"]);
+    let install = command_over(reach, &["init"]);
 
     format!(
-        "the database holds kizunasync tables from an earlier build of the pack, which a re-apply does not reshape. {lead} `{remove}` (your application tables and their data stay), then install it again with `{install}`."
+        "the database holds kizunasync tables from an earlier build of the pack, which a re-apply does not reshape. Remove Kizuna with `{remove}` (your application tables and their data stay), then install it again with `{install}`."
     )
 }
 
@@ -776,15 +764,14 @@ mod tests {
         assert!(!stderr.contains("secret"), "{stderr}");
     }
 
-    /// `deprovision` has no `--project-ref`, so over the Management API the
-    /// step names both commands over a direct connection instead.
+    /// Over the Management API both commands name the project.
     #[test]
-    fn the_fresh_install_over_the_management_api_names_a_direct_connection() {
+    fn the_fresh_install_over_the_management_api_names_the_project() {
         let project_ref = ProjectRef::parse("abcdefghijklmnopqrst").unwrap();
 
         assert_eq!(
             earlier_build_step(Some(Reach::ProjectRef(&project_ref))),
-            "the database holds kizunasync tables from an earlier build of the pack, which a re-apply does not reshape. The Management API path cannot run `kizunasync deprovision`, so remove Kizuna over the project's direct connection with `PGPASSWORD=… kizunasync deprovision --purge --db-url <the project's connection string>` (your application tables and their data stay), then install it again with `PGPASSWORD=… kizunasync init --db-url <the project's connection string>`."
+            "the database holds kizunasync tables from an earlier build of the pack, which a re-apply does not reshape. Remove Kizuna with `SUPABASE_ACCESS_TOKEN=… kizunasync deprovision --purge --project-ref abcdefghijklmnopqrst` (your application tables and their data stay), then install it again with `SUPABASE_ACCESS_TOKEN=… kizunasync init --project-ref abcdefghijklmnopqrst`."
         );
     }
 
