@@ -2,11 +2,13 @@ import type { Metadata } from 'next'
 import { DOC_GROUPS, DOCS, docsForNav } from '@/lib/docs-registry'
 import { REFERENCE_LIBRARIES, referenceHref } from '@/lib/reference-registry'
 import { DocCard } from '@/components/doc-card'
+import { pageMetadata } from '@/lib/page-metadata'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Docs',
   description: 'Kizuna Sync documentation: getting started, sync, attachments, CLI, operations, API reference, and resources.',
-}
+  path: '/docs',
+})
 
 const FEATURED = ['introduction', 'quickstart', 'playground'] as const
 

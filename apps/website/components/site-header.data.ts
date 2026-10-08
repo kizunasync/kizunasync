@@ -3,6 +3,7 @@ import { DEMO_URL, GITHUB_URL } from '@/lib/site'
 export const NAV = [
   { href: '/#how-it-works', label: 'How it works' },
   { href: '/#features', label: 'Features' },
+  { href: '/compare', label: 'Compare' },
   { href: '/docs', label: 'Docs' },
   { href: '/docs/contribute', label: 'Contribute' },
 ] as const

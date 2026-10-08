@@ -6,6 +6,7 @@ import { DocEyebrow } from '@/components/doc-eyebrow'
 import { DocPageFooter } from '@/components/doc-page-footer'
 import { REFERENCE_LIBRARIES, referenceEditUrl, referenceHref } from '@/lib/reference-registry'
 import { adjacentReferencePages, getReferenceDoc } from '@/lib/docs'
+import { pageMetadata } from '@/lib/page-metadata'
 
 // MARK: - Reference page
 
@@ -28,10 +29,11 @@ export async function generateMetadata({
 
   return doc === null
     ? {}
-    : {
+    : pageMetadata({
         title: `${doc.page.title} · ${doc.library.title} · Docs`,
         description: doc.description ?? doc.library.description,
-      }
+        path: referenceHref(libraryId, slug),
+      })
 }
 
 export default async function ReferencePage({

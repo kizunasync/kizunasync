@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Ran `kizunasync deprovision` and `kizunasync jobs` over the Management API with `--project-ref`, and made a purge take `kizunasync` off the Data API exposed schemas before it drops the schema
 - Added the FAQ, the comparison with alternatives, and the client library comparison to the docs
+- Added the `/compare` capability matrix, the home FAQ, and a share image, canonical URL, and title for every website page
 
 ### Changed
 

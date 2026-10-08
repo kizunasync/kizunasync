@@ -4,12 +4,13 @@ import { REFERENCE_LIBRARIES, referenceHref } from '@/lib/reference-registry'
 import { readLibraryVersion } from '@/lib/docs'
 import { DocCard } from '@/components/doc-card'
 import { DocEyebrow } from '@/components/doc-eyebrow'
+import { pageMetadata } from '@/lib/page-metadata'
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: 'Client library reference · Docs',
-  description:
-    'Supabase-style API reference for Swift, Kotlin, JavaScript, React, Vue, and Expo client libraries.',
-}
+  description: 'Supabase-style API reference for Swift, Kotlin, JavaScript, React, Vue, and Expo client libraries.',
+  path: '/docs/reference',
+})
 
 // MARK: - Client library reference hub
 
