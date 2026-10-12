@@ -307,7 +307,7 @@ jobs:
         run: bun run cargo:wasm
 
       - name: Upload the generated wasm glue
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: wasm-glue
           path: |
@@ -376,7 +376,7 @@ jobs:
 
       - name: Upload the Playwright report
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: browser-conformance-report
           path: |
@@ -434,7 +434,7 @@ jobs:
 
       - name: Upload Kotlin test report
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: kotlin-binding-test-report
           path: crates/kizunasync-ffi/bindings/kotlin/build/reports/tests/test
@@ -779,7 +779,7 @@ jobs:
           ls -la "$dest"
 
       - name: Upload ${{ matrix.platform }}-${{ matrix.arch }} prebuild
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: kizunasync-napi-${{ matrix.platform }}-${{ matrix.arch }}
           path: packages/core/src/native/${{ matrix.platform }}-${{ matrix.arch }}/${{ matrix.lib }}
@@ -812,7 +812,7 @@ jobs:
         run: bash scripts/build-xcframework.sh
 
       - name: Upload KizunaSyncFfi.xcframework
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: kizunasync-ffi-xcframework
           path: crates/kizunasync-ffi/bindings/swift/KizunaSyncFfi.xcframework
@@ -874,7 +874,7 @@ jobs:
         run: bash scripts/build-android-aar.sh
 
       - name: Upload kizunasync-ffi AARs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: kizunasync-ffi-aar
           path: |
@@ -1049,7 +1049,7 @@ jobs:
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: todo-android-debug
           path: examples/todo-android/app/build/outputs/apk/debug/app-debug.apk
