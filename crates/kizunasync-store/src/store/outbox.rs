@@ -2,7 +2,7 @@ use super::LocalStore;
 use crate::error::StoreError;
 use crate::mapping::{OUTBOX_SELECT, map_outbox};
 use crate::types::OutboxEntry;
-use rusqlite::params;
+use kizunasync_db::params;
 
 impl LocalStore {
     /// How many outbox entries are queued and not currently in flight.

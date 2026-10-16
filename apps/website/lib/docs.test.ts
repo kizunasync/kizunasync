@@ -304,10 +304,10 @@ describe('public documentation registry', () => {
     }
   })
 
-  test('expo guide documents UniFFI and the React Native module', () => {
+  test('expo guide documents UniFFI and Expo Modules API 2.0', () => {
     const source = readFileSync(join(REPO_ROOT, 'docs/getting-started/expo.md'), 'utf8')
 
-    assert.match(source, /React Native module inside `kizunasync`/)
+    assert.match(source, /Expo Modules API 2.0 host inside `kizunasync`/)
     assert.match(source, /UniFFI/)
   })
 
@@ -919,6 +919,8 @@ describe('repository Markdown links', () => {
       .trim()
       .split('\n')
       .filter((file) => file.length > 0 && existsSync(join(REPO_ROOT, file)))
+      // Upstream docs link outside the published crate; our vendor/README stays checked.
+      .filter((file) => !file.startsWith('vendor/turso-core/'))
     const anchorCache = new Map<string, Set<string>>()
     const anchorsFor = (path: string): Set<string> => {
       const cached = anchorCache.get(path)

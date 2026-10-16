@@ -6,6 +6,8 @@ let package = Package(
   platforms: [.iOS(.v16), .macOS(.v13)],
   products: [
     .library(name: "KizunaSync", targets: ["KizunaSync"]),
+    // Typed UniFFI host used by the Expo Modules API 2.0 integration.
+    .library(name: "KizunaSyncFfi", targets: ["KizunaSyncFfi"]),
     // The engine binary alone, which @kizunasync/rn-uniffi links. Apps depend on KizunaSync.
     .library(name: "KizunaSyncEngine", targets: ["KizunaSyncFfiRust"]),
   ],

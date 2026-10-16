@@ -267,6 +267,13 @@ export const DOCS: IDocEntry[] = [
 
   // MARK: - Testing & operations
   {
+    slug: 'turso-migration',
+    file: 'docs/operations/turso-migration.md',
+    title: 'Turso migration and recovery',
+    group: 'Testing & operations',
+    description: 'Preserve offline data when upgrading local stores to Turso, verify native builds, and recover failed migrations',
+  },
+  {
     slug: 'test-offline-behavior',
     file: 'docs/operations/test-offline-behavior.md',
     title: 'Test offline behavior',

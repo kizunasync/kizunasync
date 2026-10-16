@@ -16,6 +16,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use async_trait::async_trait;
+use kizunasync_db::Connection;
 use kizunasync_engine::{
     ConflictMode, DEFAULT_ATTACHMENT_ATTEMPTS, EngineConfig, EngineDeps, EngineError,
     ProtocolRemote, SyncEngine, SyncMode, TableConfig,
@@ -25,7 +26,6 @@ use kizunasync_protocol::{
     Verdict,
 };
 use kizunasync_store::{LocalMutation, LocalStore};
-use rusqlite::Connection;
 use serde_json::{Map, json};
 use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;

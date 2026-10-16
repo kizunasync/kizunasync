@@ -536,7 +536,7 @@ fn opening_a_database_whose_attachment_table_lacks_error_code_adds_it() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("before.db");
     {
-        let conn = rusqlite::Connection::open(&path).expect("open raw");
+        let conn = kizunasync_db::Connection::open(&path).expect("open raw");
         conn.execute_batch(
             "CREATE TABLE _kizunasync_attachments (
                ref TEXT PRIMARY KEY, upload_id TEXT NOT NULL, table_name TEXT NOT NULL,
@@ -1084,7 +1084,10 @@ fn reset_rolls_back_and_leaves_no_open_transaction_when_a_delete_fails() {
         .expect_err("the injected fault must surface");
     assert!(matches!(error, StoreError::Sqlite(_)), "{error}");
     assert!(
-        store.connection().is_autocommit(),
+        store
+            .connection()
+            .is_autocommit()
+            .expect("transaction state"),
         "reset left the connection inside a transaction"
     );
     assert!(store.read("todos", "p1").expect("read").is_some());

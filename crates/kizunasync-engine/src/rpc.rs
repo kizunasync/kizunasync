@@ -480,6 +480,7 @@ fn store_kind(engine: &SyncEngine) -> Value {
     json!({
         "kind": kind.name(),
         "durability": kind.durability(),
+        "engine": "turso",
     })
 }
 
@@ -953,7 +954,7 @@ mod tests {
         let envelope: Value = serde_json::from_str(&response).unwrap();
         assert_eq!(
             envelope,
-            json!({ "ok": true, "value": { "kind": "memory", "durability": "none" } })
+            json!({ "ok": true, "value": { "kind": "memory", "durability": "none", "engine": "turso" } })
         );
     }
 

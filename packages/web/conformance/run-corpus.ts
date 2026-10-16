@@ -421,6 +421,9 @@ async function runParity(): Promise<IParitySummary> {
   }
 
   for (const [index, vector] of vectors.entries()) {
+    const progress = document.getElementById('summary')
+
+    if (progress !== null) progress.textContent = `Query vector ${index + 1}/${vectors.length}: ${vector.name}`
     let actual: string[]
 
     try {

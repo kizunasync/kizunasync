@@ -59,8 +59,8 @@ export function callEngine(page: Page, method: string): Promise<unknown> {
 }
 
 /** The same call against one of several engines a page holds open. */
-function callEngineOn(page: Page, name: string, method: string): Promise<unknown> {
-  return page.evaluate((call) => window.__kizunasync.callOn(call.name, call.method), { name, method })
+export function callEngineOn(page: Page, name: string, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  return page.evaluate((call) => window.__kizunasync.callOn(call.name, call.method, call.params), { name, method, params })
 }
 
 /**

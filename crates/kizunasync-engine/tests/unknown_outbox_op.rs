@@ -8,6 +8,7 @@
 // not a runtime fault.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use kizunasync_db::Connection;
 use kizunasync_engine::error_catalog;
 use kizunasync_engine::{
     ConflictMode, DEFAULT_ATTACHMENT_ATTEMPTS, EngineConfig, EngineDeps, ScriptedRemote,
@@ -15,7 +16,6 @@ use kizunasync_engine::{
 };
 use kizunasync_protocol::Op;
 use kizunasync_store::{LocalMutation, LocalStore};
-use rusqlite::Connection;
 use serde_json::{Map, json};
 use std::collections::BTreeMap;
 use std::path::Path;

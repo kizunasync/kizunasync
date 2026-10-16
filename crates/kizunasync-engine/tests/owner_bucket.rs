@@ -15,6 +15,7 @@
 mod attachment_fixtures;
 
 use attachment_fixtures::sign_in;
+use kizunasync_db::Connection;
 use kizunasync_engine::error_catalog;
 use kizunasync_engine::{
     ConflictMode, DEFAULT_ATTACHMENT_ATTEMPTS, EngineConfig, EngineDeps, ProtocolRemote,
@@ -22,7 +23,6 @@ use kizunasync_engine::{
 };
 use kizunasync_protocol::{Op, PullResponse};
 use kizunasync_store::{LocalMutation, LocalStore};
-use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;

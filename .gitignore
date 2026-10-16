@@ -80,7 +80,7 @@ pnpm-lock.yaml
 ###############################################################################
 
 target/
-/target/
+/target
 **/target/
 **/*.rs.bk
 **/*.rlib
@@ -222,3 +222,6 @@ examples/*/.doc-snippets/
 ###############################################################################
 # END OF FILE
 ###############################################################################
+
+# Turso worker I/O copied by wasm-bindgen; source lives in crates/kizunasync-db.
+packages/web/src/wasm/snippets/

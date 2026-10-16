@@ -86,7 +86,7 @@ Sync stops until your app calls `reset()`, so one user's queued writes never go 
 
 ### Is the local database encrypted?
 
-No, Kizuna adds no encryption at rest. The engine links a plain SQLite build through rusqlite, not an encrypting build such as SQLCipher. The local database is therefore an ordinary SQLite store in OPFS or IndexedDB in the browser and an ordinary SQLite file on the device for Expo, Swift, and Kotlin. Its protection at rest is the protection your platform gives the app's storage. [How Kizuna works](../getting-started/how-kizuna-works.md#1-your-screen-uses-local-sqlite) shows where each driver keeps the database.
+No, Kizuna adds no encryption at rest. The shared Turso engine uses the SQLite file format without enabling database encryption. The local database is therefore an unencrypted store in OPFS or IndexedDB in the browser and an unencrypted file on the device for Expo, Swift, and Kotlin. Its protection at rest is the protection your platform gives the app's storage. [How Kizuna works](../getting-started/how-kizuna-works.md#1-your-screen-uses-local-sqlite) shows where each driver keeps the database.
 
 ## Files and media
 

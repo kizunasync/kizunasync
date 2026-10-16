@@ -14,6 +14,7 @@ XCFRAMEWORK_STAMP_CRATES=(
   kizunasync-ffi
   kizunasync-engine
   kizunasync-store
+  kizunasync-db
   kizunasync-query
   kizunasync-protocol
   kizunasync-transfer
@@ -36,6 +37,7 @@ xcframework_stamp_paths() {
     done
   done
   echo "Cargo.lock"
+  echo "vendor/turso-core"
 }
 
 # Prints the sha256 of the tracked file list plus the working-tree diff over

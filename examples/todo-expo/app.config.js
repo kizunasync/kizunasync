@@ -104,11 +104,8 @@ module.exports = () => {
       },
       plugins: [
         'expo-router',
-        'expo-sqlite',
         'expo-secure-store',
         'expo-status-bar',
-        // iOS 27 terminates an app that does not adopt the UIKit scene life cycle; SDK 57 opts in through this property and SDK 58 includes it.
-        ['expo-build-properties', { ios: { enableSceneSupport: true } }],
       ],
       extra: {
         supabaseUrl,

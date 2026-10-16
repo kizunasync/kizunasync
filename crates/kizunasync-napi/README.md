@@ -3,7 +3,7 @@
   <span style="margin: 0; font-size: 1.2em;">kizunasync-napi</span>
 </h1>
 
-N-API addon the `kizunasync` npm package loads on Node and Bun. It ships in the `@kizunasync/<triple>` platform package for each target, which npm installs as an optional dependency of `kizunasync`. The engine is `Send` and not `Sync` (its store owns a `rusqlite::Connection`), so it lives on one dedicated thread and every call is a message that thread runs as its own task. A query or a write answers while a pull or push awaits the promise the JS remote returns. JavaScript never blocks on SQLite.
+N-API addon the `kizunasync` npm package loads on Node and Bun. It ships in the `@kizunasync/<triple>` platform package for each target, which npm installs as an optional dependency of `kizunasync`. The engine is `Send` and not `Sync` (its store owns a `kizunasync_db::Connection` over Turso), so it lives on one dedicated thread and every call is a message that thread runs as its own task. A query or a write answers while a pull or push awaits the promise the JS remote returns. JavaScript never blocks on local SQL execution.
 
 HTTP stays on the host. The addon calls back into the TypeScript `IProtocolRemote` so supabase-js can attach the session. Each call pins the embedder clock it carries while that call runs, so calls that interleave stamp their own time. Private workspace member (`publish = false`).
 

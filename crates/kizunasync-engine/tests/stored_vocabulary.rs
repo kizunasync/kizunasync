@@ -9,12 +9,12 @@
 // not a runtime fault.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use kizunasync_db::Connection;
 use kizunasync_engine::error_catalog;
 use kizunasync_engine::{
     DEFAULT_ATTACHMENT_ATTEMPTS, EngineConfig, EngineDeps, ScriptedRemote, SyncEngine,
 };
 use kizunasync_store::{AttachmentEntry, AttachmentState, LocalStore};
-use rusqlite::Connection;
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;

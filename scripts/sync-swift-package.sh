@@ -86,6 +86,7 @@ mkdir -p "$DEST/Sources/KizunaSync" "$DEST/Sources/KizunaSyncFfi"
 cp "$SWIFT_BINDINGS/Sources/KizunaSync/"*.swift "$DEST/Sources/KizunaSync/"
 cp "$SWIFT_BINDINGS/Generated/kizunasync_ffi.swift" "$DEST/Sources/KizunaSyncFfi/kizunasync_ffi.swift"
 cp "$ROOT/LICENSE" "$DEST/LICENSE"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$DEST/THIRD_PARTY_NOTICES.md"
 cp "$TEMPLATES/gitignore" "$DEST/.gitignore"
 
 if [[ -n "$LOCAL_XCFRAMEWORK" ]]; then

@@ -1,5 +1,5 @@
 import type { IStoreLocator, TNativeEngineLoadResult } from '@kizunasync/core'
-import { describeUniffiLoadFailure, tryLoadUniffiNativeEngine } from '@kizunasync/rn-uniffi'
+import { loadExpoNativeEngine } from './native-engine'
 import { createExpoConnectivity } from './connectivity'
 import { createExpoForeground } from './foreground'
 
@@ -12,16 +12,9 @@ export function createStoreLocator(databasePath: string): IStoreLocator {
   return { databasePath, loadNativeEngine: loadDeviceNativeEngine, platformPorts: createDevicePlatformPorts() }
 }
 
-/**
- * The Rust engine the native build links, through `@kizunasync/rn-uniffi`.
- * This package declares that dependency and `@kizunasync/core` does not, so the
- * import lives here, where a strict install layout resolves it and Metro
- * bundles it.
- */
+/** Load the shared Rust engine through the Expo Modules API 2.0 host. */
 export function loadDeviceNativeEngine(): TNativeEngineLoadResult {
-  const result = tryLoadUniffiNativeEngine()
-
-  return result.ok ? { ok: true, handle: result.engine } : { ok: false, message: describeUniffiLoadFailure(result) }
+  return loadExpoNativeEngine()
 }
 
 /**

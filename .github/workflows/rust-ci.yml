@@ -68,6 +68,7 @@ jobs:
           base: develop
           filters: |
             bindings:
+              - 'vendor/**'
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -75,6 +76,7 @@ jobs:
               - 'scripts/cargo-bindgen.sh'
               - '.github/workflows/rust-ci.yml'
             examples:
+              - 'vendor/**'
               - 'examples/**'
               - 'packages/core/**'
               - 'crates/**'
@@ -83,12 +85,18 @@ jobs:
               - 'rust-toolchain.toml'
               - '.github/workflows/rust-ci.yml'
             simulator:
+              - 'vendor/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
               - 'examples/todo-expo/**'
               - 'packages/expo/**'
               - 'packages/rn-uniffi/**'
               - 'packages/core/**'
+              - 'scripts/check-android-engine.py'
               - '.github/workflows/rust-ci.yml'
             prebuild:
+              - 'vendor/**'
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -97,6 +105,7 @@ jobs:
               - 'packages/core/src/native/**'
               - '.github/workflows/rust-ci.yml'
             ffi_ios:
+              - 'vendor/**'
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -105,6 +114,7 @@ jobs:
               - 'crates/kizunasync-ffi/bindings/swift/**'
               - '.github/workflows/rust-ci.yml'
             ffi_android:
+              - 'vendor/**'
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -313,6 +323,7 @@ jobs:
           path: |
             packages/web/src/wasm/kizunasync_wasm.js
             packages/web/src/wasm/kizunasync_wasm_bg.wasm
+            packages/web/src/wasm/snippets/
           if-no-files-found: error
           retention-days: 1
 
@@ -443,7 +454,7 @@ jobs:
   bindings-swift:
     name: bindings · swift (XCTest on Generated)
     needs: [changes, rust]
-    if: inputs.full == true
+    if: inputs.full == true || needs.changes.outputs.bindings == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -604,13 +615,13 @@ jobs:
           --filter=@kizunasync/example-todo-expo
 
   # ── Simulator smoke · iOS ───────────────────────────────────────────────────
-  # Builds and launches the TurboModule for iOS, asserts the engine writes as expected.
+  # Build and launch the Expo Modules API 2.0 host with the current Turso binary.
   simulator-smoke:
     name: simulator smoke · iOS (todo-expo)
     needs: [changes, wasm-build]
-    if: inputs.full == true
+    if: inputs.full == true || needs.changes.outputs.simulator == 'true'
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       BUN_VERSION: 1.4.2
       # The smoke checks only which engine the app selects, so placeholder Supabase values are enough and failing sync calls are expected.
@@ -642,12 +653,15 @@ jobs:
           toolchain: stable
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
-      - name: ubrn build ios
-        working-directory: packages/rn-uniffi
-        run: bun run ubrn:ios
-
-      - name: rn-uniffi generated bindings are committed and fresh
-        run: git diff --exit-code -- packages/rn-uniffi/src/generated
+      - name: Build the current Turso engine and local typed Swift product
+        run: |
+          bash scripts/build-xcframework.sh
+          mkdir -p "$RUNNER_TEMP/kizunasync-swift"
+          version=$(node -p "require('./packages/expo/package.json').version")
+          bash scripts/sync-swift-package.sh "$RUNNER_TEMP/kizunasync-swift" \
+            --version "$version" \
+            --local-xcframework "$PWD/crates/kizunasync-ffi/bindings/swift/KizunaSyncFfi.xcframework"
+          echo "KIZUNASYNC_SWIFT_PACKAGE_PATH=$RUNNER_TEMP/kizunasync-swift" >> "$GITHUB_ENV"
 
       - name: expo prebuild --platform ios
         working-directory: examples/todo-expo
@@ -724,9 +738,9 @@ jobs:
   napi-prebuild:
     name: napi prebuild · ${{ matrix.platform }}-${{ matrix.arch }}
     needs: [changes, rust]
-    if: inputs.full == true
+    if: inputs.full == true || needs.changes.outputs.prebuild == 'true'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -742,6 +756,10 @@ jobs:
           - os: macos-latest
             platform: darwin
             arch: arm64
+            lib: libkizunasync_napi.dylib
+          - os: macos-15-intel
+            platform: darwin
+            arch: x64
             lib: libkizunasync_napi.dylib
           - os: windows-latest
             platform: win32
@@ -761,9 +779,12 @@ jobs:
           shared-key: kizunasync-napi-prebuild
           cache-on-failure: true
 
-      # Linux here does not need libdbus, and rusqlite is bundled.
+      # The shared Turso backend has no libdbus dependency.
       - name: cargo build -p kizunasync-napi --release
         run: cargo build -p kizunasync-napi --release
+
+      - name: Native Turso migration, recovery, and engine contracts
+        run: cargo test -p kizunasync-db -p kizunasync-store -p kizunasync-engine --locked
 
       # Copy the dynamic library into the directory expected by the loader.
       - name: Copy cdylib into packages/core/src/native
@@ -963,6 +984,64 @@ jobs:
           sleep 4
           xcrun simctl spawn "$udid" launchctl list | grep -q com.kizunasync.todo-ios
           echo "todo-ios simulator smoke OK"
+
+  expo-android:
+    name: Expo SDK 58 · Modules API 2.0 · Android assembly
+    needs: [changes, rust, wasm-build]
+    if: inputs.full == true || needs.changes.outputs.simulator == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      KSYNC_SKIP_RUST: '1'
+      EXPO_PUBLIC_TODO_EXPO_SUPABASE_URL: http://127.0.0.1:55321
+      EXPO_PUBLIC_TODO_EXPO_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_smoke_placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.2'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+      - uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1
+        id: ndk
+        with:
+          ndk-version: r27c
+          link-to-sdk: true
+      - uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        with:
+          tool: cargo-ndk
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: wasm-glue
+          path: packages/web/src/wasm
+      - name: Build and publish the current Turso AARs locally
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          bash scripts/build-android-aar.sh
+          cd crates/kizunasync-ffi/bindings/kotlin
+          ./gradlew :engine:publishToMavenLocal :android:publishToMavenLocal --no-daemon
+          echo "KIZUNASYNC_MAVEN_REPO=$HOME/.m2/repository" >> "$GITHUB_ENV"
+      - name: Prebuild the SDK 58 app and compile the Modules API 2.0 host
+        working-directory: examples/todo-expo
+        run: |
+          bun x expo prebuild --platform android --no-install
+          cd android
+          ./gradlew :app:assembleDebug --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64
+      - name: Verify the APK embeds the current Turso engine for every supported ABI
+        run: python3 scripts/check-android-engine.py examples/todo-expo/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: expo-sdk58-android
+          path: examples/todo-expo/android/app/build/outputs/apk/debug/app-debug.apk
 
   todo-android-host:
     name: todo-android · host tests

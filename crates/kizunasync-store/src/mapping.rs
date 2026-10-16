@@ -15,7 +15,7 @@ pub(crate) const ATTACHMENT_SELECT: &str =
 /// [`StoreError::Sqlite`] when a column cannot be read, or
 /// [`StoreError::UnknownVocabulary`] when the stored `state` falls outside
 /// [`crate::AttachmentState`].
-pub(crate) fn map_attachment(r: &rusqlite::Row<'_>) -> Result<AttachmentEntry, StoreError> {
+pub(crate) fn map_attachment(r: &kizunasync_db::Row<'_>) -> Result<AttachmentEntry, StoreError> {
     let state: String = r.get(12)?;
 
     Ok(AttachmentEntry {
@@ -58,7 +58,7 @@ pub(crate) const OUTBOX_SELECT: &str = "SELECT seq, mutation_id, table_name, pk,
 /// [`StoreError::UnknownVocabulary`] when the stored `op` falls outside the
 /// wire set, or [`StoreError::Json`] when a stored JSON column cannot be
 /// decoded.
-pub(crate) fn map_outbox(r: &rusqlite::Row<'_>) -> Result<OutboxEntry, StoreError> {
+pub(crate) fn map_outbox(r: &kizunasync_db::Row<'_>) -> Result<OutboxEntry, StoreError> {
     let op: String = r.get(4)?;
     let columns: String = r.get(5)?;
     let transforms: Option<String> = r.get(6)?;
@@ -95,8 +95,8 @@ pub(crate) fn map_outbox(r: &rusqlite::Row<'_>) -> Result<OutboxEntry, StoreErro
 pub(crate) fn sql_value(
     column: &str,
     value: &serde_json::Value,
-) -> Result<rusqlite::types::Value, StoreError> {
-    use rusqlite::types::Value as Sql;
+) -> Result<kizunasync_db::types::Value, StoreError> {
+    use kizunasync_db::types::Value as Sql;
     use serde_json::Value as Json;
     match value {
         Json::Null => Ok(Sql::Null),

@@ -6,7 +6,7 @@
 //!
 //! # Concurrency
 //!
-//! [`LocalStore`] is `Send` and not `Sync` (it owns a `rusqlite::Connection`),
+//! [`LocalStore`] is `Send` and not `Sync` (it owns a `kizunasync_db::Connection`),
 //! so one store serves one thread at a time.
 
 #![forbid(unsafe_code)]

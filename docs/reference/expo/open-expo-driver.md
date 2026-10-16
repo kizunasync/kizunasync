@@ -1,6 +1,6 @@
 ---
 title: Open the SQLite driver
-description: Name the local store and carry the device ports: expo-sqlite on device, the kizunasync/web worker driver on Expo web.
+description: Name the local store and carry the device ports: Turso on device, the kizunasync/web worker driver on Expo web.
 status: alpha
 docType: reference
 library: expo
@@ -12,7 +12,7 @@ audience: app-developer
 
 `openExpoDriver` returns the `IStoreLocator` the client is built on, and the platform decides which one. [Initializing](./initializing.md) passes it to `createSupabaseKizunaSync` in `src/kizunasync.ts`, and nothing else in the app calls it. An app needs this page only to change the database name, to switch to the [op-sqlite driver](./open-op-sqlite-driver.md), or to diagnose an error the first engine call reports.
 
-On iOS and Android the call returns at once and opens nothing. The locator names the expo-sqlite file and carries two platform ports: a NetInfo [connectivity](./create-expo-connectivity.md) port and an `AppState` [foreground](./create-expo-foreground.md) port. The file path is read on first use: when the app client first needs its engine, the driver opens expo-sqlite once to learn the path, closes that handle, and the Rust kernel opens the same file through UniFFI, so no SQL runs in the page. On [Expo](https://expo.dev) web the call returns [`createWebWorkerDriver`](../javascript/create-web-worker-driver.md) from `kizunasync/web`, passing it the resolver for the engine binary's asset URL, which needs `wasm` in Metro's `resolver.assetExts`. The driver calls that resolver when its worker starts, so neither the import of `src/kizunasync.ts` nor a static render, which has no `location`, runs it. That driver carries the Rust engine in a dedicated worker rather than a local [SQLite](https://grokipedia.com/page/SQLite) connection, and Metro bundles the worker as its own JavaScript bundle.
+On iOS and Android the call returns at once and opens nothing. The Expo Modules API 2.0 host resolves the existing SQLite directory on first use, and the shared Rust Turso engine opens the file. The locator also carries NetInfo [connectivity](./create-expo-connectivity.md) and AppState [foreground](./create-expo-foreground.md) ports. On [Expo](https://expo.dev) web the call returns [`createWebWorkerDriver`](../javascript/create-web-worker-driver.md) from `kizunasync/web`, passing it the resolver for the engine binary's asset URL, which needs `wasm` in Metro's `resolver.assetExts`. The driver calls that resolver when its worker starts, so neither the import of `src/kizunasync.ts` nor a static render, which has no `location`, runs it. That driver carries the Rust engine in a dedicated worker rather than a local [SQLite](https://grokipedia.com/page/SQLite) connection, and Metro bundles the worker as its own JavaScript bundle.
 
 ## Examples
 
@@ -42,7 +42,7 @@ export const kizunasync = createSupabaseKizunaSync({
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `name` | `string` | Yes | The database, such as `todos.db`. On device it is the expo-sqlite file name. On web it names the database the worker opens, and the lock and channel the tabs coordinate on. Build one driver per database, in the module that builds the app client. |
+| `name` | `string` | Yes | The database, such as `todos.db`. On device it is the database file name in the existing SQLite directory. On web it names the database the worker opens, and the lock and channel the tabs coordinate on. Build one driver per database, in the module that builds the app client. |
 
 ## Returns
 
@@ -50,17 +50,17 @@ export const kizunasync = createSupabaseKizunaSync({
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `databasePath` | `string \| null` | — | On device, the file expo-sqlite reports for `name`. The first read opens expo-sqlite, reads the path, closes the handle, and keeps the path for every later read. The app client makes that read on its first engine call. On web, the `name` passed in, which is the database the worker opens. |
+| `databasePath` | `string \| null` | — | On device, the native Expo module resolves the path for `name` and caches it without opening another database engine. The app client makes that read on its first engine call. On web, the `name` passed in, which is the database the worker opens. |
 | `platformPorts.connectivity` | `IConnectivity` | — | The network signal the app client follows when it is given no `connectivity` option. On device, the NetInfo port [`createExpoConnectivity()`](./create-expo-connectivity.md) builds with its default gate. On web, the browser's online signal from `kizunasync/web`. |
 | `platformPorts.foreground` | `IForeground` | — | The app-became-visible signal the app client follows when it is given no `foreground` option. On device, the `AppState` port [`createExpoForeground()`](./create-expo-foreground.md) builds. Absent on web, where `createSupabaseKizunaSync` listens to the document instead. |
-| `loadNativeEngine` | `() => TNativeEngineLoadResult` | — | Device only. Loads the [Rust engine](./rust-engine.md) through the React Native module inside `kizunasync` and answers `{ ok: true, handle }`, or `{ ok: false, message }` carrying the message that module gives. The app client calls it once, on its first engine call. |
+| `loadNativeEngine` | `() => TNativeEngineLoadResult` | — | Device only. Loads the [Rust engine](./rust-engine.md) through the Expo Modules API 2.0 module inside `kizunasync` and answers `{ ok: true, handle }`, or `{ ok: false, message }` carrying the message that module gives. The app client calls it once, on its first engine call. |
 | `engineTransport` | `TEngineTransportFactory` | — | Web only. The live connection to the [Rust engine](./rust-engine.md) running in the worker. The web driver also carries an optional `durability` reading; [Open the browser driver](../javascript/create-web-worker-driver.md) documents that shape in full. |
 
 Neither port subscribes to NetInfo or `AppState` before the app client asks it to.
 
 ## Errors
 
-On device the call throws nothing. The path read on the app client's first engine call can fail: expo-sqlite throws while opening or closing the file, or it reports no path, which throws `openExpoDriver: expo-sqlite did not report a databasePath for "<name>"`. The app client turns that failure into a `TEngineError` with code `ENGINE_UNAVAILABLE` that carries the expo-sqlite message, keeps it, and rejects every later engine call with the same error. A native engine that does not load fails the same call the same way, with the React Native module message that [Rust engine](./rust-engine.md#when-neither-condition-holds) lists. The pinned expo-sqlite version declares both `databasePath` and `closeSync` as required, so the missing path is a defensive case.
+On device the call opens nothing. A missing native module or unavailable database directory fails the first engine call with `ENGINE_UNAVAILABLE`, and the client preserves that failure on subsequent calls. Rebuild the app with Expo SDK 58 and the Turso engine. Existing databases are backed up before initialization; a failed backup or integrity check refuses the open. See [migration and recovery](../../operations/turso-migration.md).
 
 On web nothing is opened here either. The worker starts on the client's first engine call, so an open failure surfaces there, and so does the asset URL. When Metro did not register the engine binary as an asset, the resolver throws `kizunasync/expo: Metro did not register kizunasync_wasm_bg.wasm as an asset; add "wasm" to resolver.assetExts in metro.config.js` as the worker starts, and the engine calls fail with `ENGINE_UNAVAILABLE`, whose message carries that text after `this tab's own promotion failed:`.
 

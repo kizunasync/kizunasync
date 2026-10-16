@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { cargoToolsBin } from './lib/cargo-tools'
 
@@ -27,13 +27,6 @@ const bundled = resolve(outDir, 'kizunasync_wasm_bg.wasm')
 
 /** Locally installed cargo binaries the repository does not put on PATH. */
 const toolsBin = cargoToolsBin()
-
-/**
- * sqlite-wasm-rs's shim uses the C23 `[[noreturn]]` attribute, and its build
- * script sets no `-std`. Linux clang defaults to gnu17 and rejects it; `gnu2x`
- * is Clang 14's spelling of GNU C23, and later clangs accept it too.
- */
-const DEFAULT_WASM_CFLAGS = '-std=gnu2x'
 
 function run(cmd: string, args: string[], label: string, env?: NodeJS.ProcessEnv): void {
   console.log(`[build-wasm] ${label}`)
@@ -52,22 +45,6 @@ function probeVersion(bin: string): string | null {
   if (probe.status !== 0 || typeof probe.stdout !== 'string') return null
 
   return probe.stdout.trim()
-}
-
-/** `llvm-ar` shipped with the active toolchain's `llvm-tools` component. */
-function hostLlvmAr(): string | null {
-  const sysroot = spawnSync('rustc', ['--print', 'sysroot'], { encoding: 'utf8' })
-  const verbose = spawnSync('rustc', ['-vV'], { encoding: 'utf8' })
-
-  if (sysroot.status !== 0 || verbose.status !== 0) return null
-
-  const host = /^host: (.+)$/m.exec(verbose.stdout)?.[1]
-
-  if (host === undefined) return null
-
-  const candidate = resolve(sysroot.stdout.trim(), 'lib/rustlib', host, 'bin/llvm-ar')
-
-  return existsSync(candidate) ? candidate : null
 }
 
 /** Resolve a runnable binary on PATH, then in the repository-local install root. */
@@ -111,21 +88,6 @@ if (installed === null || !installed.endsWith(version)) {
   process.exit(1)
 }
 
-/**
- * Apple's `ar` writes an empty archive for WebAssembly objects, so
- * `sqlite-wasm-rs` links an empty `libwsqlite3.a` and the sqlite symbols
- * survive as `import "env"`. `llvm-ar` from the `llvm-tools` rustup component
- * archives them. Rust 1.95 also emits an exception-tag import when panics
- * unwind; aborting keeps that out of the browser glue.
- */
-const llvmAr = hostLlvmAr()
-
-if (llvmAr === null) {
-  console.error(
-    '[build-wasm] llvm-ar not found. Install it with:\n  rustup component add llvm-tools',
-  )
-  process.exit(1)
-}
 
 run(
   'cargo',
@@ -133,14 +95,12 @@ run(
   'cargo build (wasm32, release-size)',
   {
     ...process.env,
-    AR: llvmAr,
-    AR_wasm32_unknown_unknown: llvmAr,
-    CFLAGS_wasm32_unknown_unknown: process.env.CFLAGS_wasm32_unknown_unknown ?? DEFAULT_WASM_CFLAGS,
     RUSTFLAGS: `${process.env.RUSTFLAGS ?? ''} -C panic=abort`.trim(),
   },
 )
 
 mkdirSync(outDir, { recursive: true })
+rmSync(resolve(outDir, 'snippets'), { recursive: true, force: true })
 run(
   bindgen,
   [artifact, '--target', 'web', '--typescript', '--out-dir', outDir],

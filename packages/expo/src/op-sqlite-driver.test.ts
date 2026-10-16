@@ -4,11 +4,11 @@
  * peer. The device gate itself is `verifyOpSqliteDriver()` run on a physical
  * device with the peer installed. The locator's device ports reach NetInfo and
  * AppState, so both are mocked; bun cannot load either. Its native engine
- * loader delegates to `@kizunasync/rn-uniffi`, mocked as well.
+ * loader delegates to the Expo Modules API 2.0 host, mocked as well.
  */
 
 import { describe, expect, mock, test } from 'bun:test'
-import type { TKizunaSyncNativeEngine, TUniffiLoadFailure, TUniffiLoadResult } from '@kizunasync/rn-uniffi'
+import type { IKizunaExpoModule } from './native-module.types'
 import type { IOpSqliteDb, IOpSqliteModule, IOpSqliteResult } from './op-sqlite-driver'
 
 let netInfoSubscriptions = 0
@@ -37,29 +37,23 @@ mock.module('@react-native-community/netinfo', () => ({
   },
 }))
 
-/** What the mocked `tryLoadUniffiNativeEngine` answers, swapped per test, and how often it ran. */
-let uniffiLoad: TUniffiLoadResult = { ok: false, reason: 'not_linked' }
-let uniffiLoads = 0
+let nativeModule: IKizunaExpoModule | null = null
+let nativeLoads = 0
 
-mock.module('@kizunasync/rn-uniffi', () => ({
-  tryLoadUniffiNativeEngine: () => {
-    uniffiLoads += 1
+mock.module('./native-module', () => ({ getNativeModule: () => { nativeLoads += 1;
 
-    return uniffiLoad
-  },
-  describeUniffiLoadFailure: (failure: TUniffiLoadFailure) => `described ${JSON.stringify(failure)}`,
-}))
+ return nativeModule } }))
 
 const { openOpSqliteDriver, probeHandle, verifyOpSqliteDriver } = await import('./op-sqlite-driver')
 
-/** An engine with the six members a linked module exposes, none of which these tests call. */
-const nativeEngine = (): TKizunaSyncNativeEngine => ({
-  create: () => undefined,
+const nativeEngine = (): IKizunaExpoModule => ({
+  newEngineId: () => crypto.randomUUID(),
+  databasePath: (name) => `/tmp/${name}`,
+  createEngine: async () => undefined,
   call: () => '{"ok":true,"value":null}',
   callAsync: async () => '{"ok":true,"value":null}',
-  subscribe: () => 1n,
-  unsubscribe: () => undefined,
-  shutdown: () => undefined,
+  closeEngine: async () => undefined,
+  addListener: () => ({ remove: () => undefined }),
 })
 
 /**
@@ -159,32 +153,26 @@ describe('op-sqlite driver', () => {
   })
 
   test('openOpSqliteDriver builds without loading the native engine', () => {
-    uniffiLoads = 0
+    nativeLoads = 0
     openOpSqliteDriver('unit.sqlite', { location: '/tmp' })
 
-    expect(uniffiLoads).toBe(0)
+    expect(nativeLoads).toBe(0)
   })
 
-  test('openOpSqliteDriver loadNativeEngine hands back the engine the kizunasync React Native module loaded', () => {
-    const engine = nativeEngine()
-
-    uniffiLoads = 0
-    uniffiLoad = { ok: true, engine }
+  test('the legacy path locator loads the Expo Turso host', () => {
+    nativeModule = nativeEngine()
+    nativeLoads = 0
     const loaded = openOpSqliteDriver('unit.sqlite', { location: '/tmp' }).loadNativeEngine?.()
 
-    expect(loaded).toEqual({ ok: true, handle: engine })
-    expect(loaded?.ok === true ? loaded.handle : null).toBe(engine)
-    expect(uniffiLoads).toBe(1)
+    expect(loaded?.ok).toBe(true)
+    expect(nativeLoads).toBe(1)
   })
 
-  test.each<TUniffiLoadFailure>([
-    { ok: false, reason: 'not_linked' },
-    { ok: false, reason: 'invalid_module' },
-    { ok: false, reason: 'install_failed', cause: 'Requiring unknown module "1234"' },
-  ])('openOpSqliteDriver loadNativeEngine reports $reason with the message the kizunasync React Native module gives for it', (failure) => {
-    uniffiLoad = failure
-
-    expect(openOpSqliteDriver('unit.sqlite', { location: '/tmp' }).loadNativeEngine?.()).toEqual({ ok: false, message: `described ${JSON.stringify(failure)}` })
+  test('the legacy path locator reports a missing Expo native build', () => {
+    nativeModule = null
+    expect(openOpSqliteDriver('unit.sqlite', { location: '/tmp' }).loadNativeEngine?.()).toMatchObject({
+      ok: false, message: expect.stringContaining('Rebuild the native app with Expo SDK 58'),
+    })
   })
 
   test('openOpSqliteDriver fails loud without location', () => {

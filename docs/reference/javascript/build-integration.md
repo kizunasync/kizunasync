@@ -10,7 +10,7 @@ audience: app-developer
 
 # JavaScript: Build integration
 
-[Open the browser driver](./create-web-worker-driver.md) spawns a module worker, and that worker loads a [WebAssembly](https://grokipedia.com/page/WebAssembly) build of the Rust engine with [SQLite](https://grokipedia.com/page/SQLite) inside it. Both have to survive the bundle. Vite needs no configuration for either. Metro needs one line naming the engine binary as an asset, plus the same two requirements below that every bundler needs. On Expo SDK 57, Metro's development server also needs lazy bundling turned off.
+[Open the browser driver](./create-web-worker-driver.md) spawns a module worker, and that worker loads a [WebAssembly](https://grokipedia.com/page/WebAssembly) build of the Rust engine with Turso inside it. Both have to survive the bundle. Vite needs no configuration for either. Metro needs one line naming the engine binary as an asset, plus the same requirements below that every bundler needs.
 
 ## Examples
 
@@ -42,7 +42,7 @@ Metro compiles `import.meta` to a registry the worker bundle does not carry, so 
 
 ### Expo web development server
 
-On Expo SDK 57, the Expo web target needs `expo` 57.0.26 or later in development. With `expo` 57.0.25, `expo start` fails to bundle it with `Worker chunk not found for: .../expo-sqlite/web/worker.ts`, because lazy bundling leaves web-worker modules out of the graph, and `npx expo install expo` moves to the fixed release. Keep lazy bundling on and do not set `EXPO_NO_METRO_LAZY`, because Metro loads the Kizuna engine worker as a split bundle and with lazy bundling off the web driver cannot start that worker (`Bundle splitting is required for Web Worker imports`).
+The Expo integration targets SDK 58. Keep lazy bundling enabled in development: Metro loads the Kizuna engine worker as a split bundle, and with lazy bundling disabled the web driver cannot start it (`Bundle splitting is required for Web Worker imports`). Remove any old `EXPO_NO_METRO_LAZY` workaround when upgrading.
 
 On iOS and Android, Expo Go cannot load the engine, so those targets need a development build, as [Expo: Rust engine](../expo/rust-engine.md#when-neither-condition-holds) explains.
 

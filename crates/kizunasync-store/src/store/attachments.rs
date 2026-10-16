@@ -2,8 +2,8 @@ use super::LocalStore;
 use crate::error::StoreError;
 use crate::mapping::{ATTACHMENT_SELECT, map_attachment, sql_value};
 use crate::types::{AttachmentEntry, AttachmentFailure, AttachmentState};
+use kizunasync_db::{OptionalExtension, ToSql, params};
 use kizunasync_protocol::ColumnValues;
-use rusqlite::{OptionalExtension, ToSql, params};
 
 impl LocalStore {
     /// Records how far a transfer has moved, so a resumed one restarts from the
@@ -114,8 +114,10 @@ impl LocalStore {
             &entry.direction,
             &state,
         ];
-        self.conn
-            .execute(&sql, rusqlite::params_from_iter(job.iter().chain(extra)))?;
+        self.conn.execute(
+            &sql,
+            kizunasync_db::params_from_iter(job.iter().chain(extra)),
+        )?;
         Ok(())
     }
 
@@ -475,7 +477,7 @@ impl LocalStore {
             "direction",
         ];
         let mut sets = Vec::with_capacity(patch.len() + 1);
-        let mut values: Vec<rusqlite::types::Value> = Vec::with_capacity(patch.len() + 2);
+        let mut values: Vec<kizunasync_db::types::Value> = Vec::with_capacity(patch.len() + 2);
         for (column, value) in patch {
             if !PATCHABLE.contains(&column.as_str()) {
                 return Err(StoreError::Constraint(format!(
@@ -497,16 +499,16 @@ impl LocalStore {
             values.push(sql_value(column, value)?);
             sets.push(format!("{column} = ?{}", values.len()));
         }
-        values.push(rusqlite::types::Value::Text(now.to_string()));
+        values.push(kizunasync_db::types::Value::Text(now.to_string()));
         sets.push(format!("updated_at = ?{}", values.len()));
-        values.push(rusqlite::types::Value::Text(reference.to_string()));
+        values.push(kizunasync_db::types::Value::Text(reference.to_string()));
         let sql = format!(
             "UPDATE _kizunasync_attachments SET {} WHERE ref = ?{}",
             sets.join(", "),
             values.len()
         );
         self.conn
-            .execute(&sql, rusqlite::params_from_iter(values))?;
+            .execute(&sql, kizunasync_db::params_from_iter(values))?;
         Ok(())
     }
 
@@ -635,16 +637,16 @@ impl LocalStore {
             "SELECT COUNT(*) FROM _kizunasync_attachments
              WHERE local_path = ?1 AND state NOT IN ('orphaned', 'evicted')",
         );
-        let mut values: Vec<rusqlite::types::Value> =
-            vec![rusqlite::types::Value::Text(local_path.to_string())];
+        let mut values: Vec<kizunasync_db::types::Value> =
+            vec![kizunasync_db::types::Value::Text(local_path.to_string())];
         if let Some(reference) = excluding_reference {
             sql.push_str(" AND ref != ?2");
-            values.push(rusqlite::types::Value::Text(reference.to_string()));
+            values.push(kizunasync_db::types::Value::Text(reference.to_string()));
         }
 
-        let count: i64 = self
-            .conn
-            .query_row(&sql, rusqlite::params_from_iter(values), |r| r.get(0))?;
+        let count: i64 =
+            self.conn
+                .query_row(&sql, kizunasync_db::params_from_iter(values), |r| r.get(0))?;
         Ok(u64::try_from(count).unwrap_or(0))
     }
 }
