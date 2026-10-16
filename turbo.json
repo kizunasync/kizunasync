@@ -1,10 +1,6 @@
 {
   "$schema": "https://v2-10-12.turborepo.dev/schema.json",
   "ui": "tui",
-  "futureFlags": {
-    "experimentalCargoWorkspaces": true,
-    "experimentalTaskCommand": true
-  },
   "tasks": {
     "build": {
       "dependsOn": [
@@ -130,6 +126,34 @@
       "cache": true,
       "dependsOn": [
         "@kizunasync/supabase-pack#test"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/vendor/**",
+        "!$TURBO_ROOT$/crates/**/build/**",
+        "!$TURBO_ROOT$/crates/**/.gradle/**",
+        "!$TURBO_ROOT$/crates/**/.build/**",
+        "!$TURBO_ROOT$/crates/**/jniLibs/**",
+        "!$TURBO_ROOT$/crates/**/*.xcframework/**"
+      ],
+      "outputs": [],
+      "passThroughEnv": [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "RUSTC_WRAPPER"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "CARGO_BUILD_TARGET"
       ]
     },
     "type-check": {
@@ -140,23 +164,34 @@
     "check": {},
     "lint": {},
     "kizunasync-cargo#lint": {
-      "command": [
-        "cargo",
-        "clippy",
-        "--workspace",
-        "--all-targets",
-        "--locked",
-        "--features",
-        "kizunasync-ffi/http",
-        "--",
-        "-D",
-        "warnings",
-        "-D",
-        "clippy::unwrap_used",
-        "-D",
-        "clippy::expect_used",
-        "-D",
-        "clippy::panic"
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/vendor/**",
+        "!$TURBO_ROOT$/crates/**/build/**",
+        "!$TURBO_ROOT$/crates/**/.gradle/**",
+        "!$TURBO_ROOT$/crates/**/.build/**",
+        "!$TURBO_ROOT$/crates/**/jniLibs/**",
+        "!$TURBO_ROOT$/crates/**/*.xcframework/**"
+      ],
+      "cache": true,
+      "outputs": [],
+      "passThroughEnv": [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "RUSTC_WRAPPER"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "CARGO_BUILD_TARGET"
       ]
     },
     "format": {
@@ -164,6 +199,130 @@
     },
     "clean": {
       "cache": false
+    },
+    "kizunasync-cargo#build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/vendor/**",
+        "!$TURBO_ROOT$/crates/**/build/**",
+        "!$TURBO_ROOT$/crates/**/.gradle/**",
+        "!$TURBO_ROOT$/crates/**/.build/**",
+        "!$TURBO_ROOT$/crates/**/jniLibs/**",
+        "!$TURBO_ROOT$/crates/**/*.xcframework/**"
+      ],
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "RUSTC_WRAPPER"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "CARGO_BUILD_TARGET"
+      ]
+    },
+    "kizunasync-cargo#check": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/vendor/**",
+        "!$TURBO_ROOT$/crates/**/build/**",
+        "!$TURBO_ROOT$/crates/**/.gradle/**",
+        "!$TURBO_ROOT$/crates/**/.build/**",
+        "!$TURBO_ROOT$/crates/**/jniLibs/**",
+        "!$TURBO_ROOT$/crates/**/*.xcframework/**"
+      ],
+      "cache": true,
+      "outputs": [],
+      "passThroughEnv": [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "RUSTC_WRAPPER"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "CARGO_BUILD_TARGET"
+      ]
+    },
+    "kizunasync-cargo#format": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/vendor/**",
+        "!$TURBO_ROOT$/crates/**/build/**",
+        "!$TURBO_ROOT$/crates/**/.gradle/**",
+        "!$TURBO_ROOT$/crates/**/.build/**",
+        "!$TURBO_ROOT$/crates/**/jniLibs/**",
+        "!$TURBO_ROOT$/crates/**/*.xcframework/**"
+      ],
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "RUSTC_WRAPPER"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "CARGO_BUILD_TARGET"
+      ]
+    },
+    "kizunasync-napi#build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/Cargo.toml",
+        "$TURBO_ROOT$/Cargo.lock",
+        "$TURBO_ROOT$/rust-toolchain.toml",
+        "$TURBO_ROOT$/crates/**",
+        "$TURBO_ROOT$/vendor/**",
+        "!$TURBO_ROOT$/crates/**/build/**",
+        "!$TURBO_ROOT$/crates/**/.gradle/**",
+        "!$TURBO_ROOT$/crates/**/.build/**",
+        "!$TURBO_ROOT$/crates/**/jniLibs/**",
+        "!$TURBO_ROOT$/crates/**/*.xcframework/**"
+      ],
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": [
+        "CARGO_HOME",
+        "RUSTUP_HOME",
+        "CARGO_TARGET_DIR",
+        "CARGO_BUILD_JOBS",
+        "RUSTC_WRAPPER"
+      ],
+      "env": [
+        "RUSTFLAGS",
+        "CARGO_ENCODED_RUSTFLAGS",
+        "RUSTDOCFLAGS",
+        "RUSTUP_TOOLCHAIN",
+        "CARGO_BUILD_TARGET"
+      ]
     }
   }
 }

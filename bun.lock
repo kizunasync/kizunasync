@@ -107,6 +107,10 @@
         "typescript": "~7.0.2",
       },
     },
+    "crates/kizunasync-napi": {
+      "name": "kizunasync-napi",
+      "version": "0.0.0",
+    },
     "examples/todo-expo": {
       "name": "@kizunasync/example-todo-expo",
       "version": "0.2.6-alpha.3",
@@ -398,6 +402,10 @@
         "typescript": "~7.0.2",
         "vite": "^8.3.2",
       },
+    },
+    "tools/cargo": {
+      "name": "kizunasync-cargo",
+      "version": "0.0.0",
     },
   },
   "overrides": {
@@ -1904,6 +1912,10 @@
     "khroma": ["khroma@2.1.0", "", {}, "sha512-Ls993zuzfayK269Svk9hzpeGUKob/sIgZzyHYdjQoAdQetRKpOLj+k/QQQ/6Qi0Yz65mlROrfd+Ev+1+7dz9Kw=="],
 
     "kizunasync": ["kizunasync@workspace:packages/kizunasync"],
+
+    "kizunasync-cargo": ["kizunasync-cargo@workspace:tools/cargo"],
+
+    "kizunasync-napi": ["kizunasync-napi@workspace:crates/kizunasync-napi"],
 
     "kleur": ["kleur@3.0.3", "", {}, "sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w=="],
 

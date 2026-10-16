@@ -34,7 +34,7 @@ The repository has eight GitHub Actions workflows. A push to `develop` and every
 | [Bun](https://bun.sh/docs/installation), workspace | `bun@1.4.2`, with `engines.bun` at `>=1.3.0` | Root `packageManager` and `engines` |
 | Bun, workflows | `1.4.2` | `BUN_VERSION` in `ci.yml`, `rust-ci.yml`, `release-npm.yml`, `release-swift.yml`, `release-kotlin.yml`, `deploy-demo.yml`, and `deploy-website.yml` |
 | [Node](https://grokipedia.com/page/Node.js) | `^20.19.0 \|\| >=22.12.0` | Root `engines` |
-| Turbo | `2.11.7`, with experimental Cargo workspace discovery (`kizunasync-cargo`) and `experimentalTaskCommand` | Root `turbo.json` `futureFlags` |
+| Turbo | `2.11.7`, with private Cargo task adapters (`kizunasync-cargo` and `kizunasync-napi`) | Root `package.json` workspaces and `turbo.json` |
 | Supabase CLI | `^2.119.0` | `@kizunasync/supabase-pack` dev dependency; the workflow installs `latest` through `supabase/setup-cli@v3` |
 | Next.js | `^16.3.8` | Website and sync-inspector dependency |
 | Rust | Stable, plus rustfmt, clippy, and `llvm-tools` | `rust-toolchain.toml`, which rustup reads to install all three locally and in CI; `scripts/build-wasm.ts` archives the wasm32 SQLite objects with the `llvm-ar` that `llvm-tools` ships |
@@ -64,7 +64,7 @@ The three Turbo tasks delegate to workspace scripts:
 
 - `type-check` runs the TypeScript command declared by each participating workspace, and a following step in the same job type-checks the root `scripts/*.ts` against `tsconfig.scripts.json`, which no workspace covers;
 - `test` is normally `bun test` in each JavaScript workspace, plus `cargo test --workspace --locked` through the `kizunasync-cargo` workspace package, including the website documentation tests;
-- `build` runs package and app build scripts, including [Next.js](https://nextjs.org) builds with the flags each app declares. With `experimentalCargoWorkspaces`, an unfiltered or `--affected` run also schedules Cargo `build` for entrypoint crates, as `cargo build --package=<crate> --locked`. The quality job therefore installs `libdbus-1-dev` for `kizunasync-cli` on Linux. It still builds `kizunasync-napi` explicitly before Turbo, so app-client tests have the addon even when `--affected` does not select that crate. The stricter Clippy, nextest, and `kizunasync-ffi/http` gates stay in `rust-ci.yml`.
+- `build` runs package and app build scripts, including [Next.js](https://nextjs.org) builds with the flags each app declares. The private `kizunasync-cargo` task adapter runs `cargo build --workspace --locked`. Its inputs include crate and vendor sources, so `--affected` selects it when Rust changes. The quality job installs `libdbus-1-dev` for `kizunasync-cli` on Linux. It also builds `kizunasync-napi` explicitly before Turbo, so app-client tests have the addon even when `--affected` does not select that package. The stricter Clippy, nextest, and `kizunasync-ffi/http` gates stay in `rust-ci.yml`. Experimental Cargo discovery is disabled because Turbo rejects the excluded local Turso patch before executing tasks.
 
 The `quality` job installs the Rust toolchain through the shared wasm action, as the steps above show. It builds the N-API addon explicitly. Its suites are therefore real evidence for the addon lane, rather than a best-effort side effect of root postinstall. The `core-on-rust` job in the Rust workflow below builds and asserts the addon again on its own runner. It then runs the suite on that addon, so it supports an engine claim independent of `quality`.
 

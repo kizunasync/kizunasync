@@ -1,0 +1,12 @@
+{
+  "name": "kizunasync-cargo",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "cargo build --manifest-path ../../Cargo.toml --workspace --locked",
+    "test": "cargo test --manifest-path ../../Cargo.toml --workspace --locked",
+    "check": "cargo check --manifest-path ../../Cargo.toml --workspace --locked",
+    "lint": "cargo clippy --manifest-path ../../Cargo.toml --workspace --all-targets --locked --features kizunasync-ffi/http -- -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic",
+    "format": "cargo fmt --manifest-path ../../Cargo.toml --all"
+  }
+}

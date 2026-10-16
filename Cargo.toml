@@ -27,12 +27,6 @@ default-members = [
   "crates/kizunasync-ffi",
 ]
 
-# Turborepo identity for experimental Cargo workspace discovery
-# (https://turborepo.dev/docs/guides/tools/rust). `kizunasync` is the npm CLI shim;
-# this name is the Cargo workspace package. Filter with `--filter=kizunasync-cargo`.
-[workspace.metadata]
-name = "kizunasync-cargo"
-
 [workspace.package]
 edition = "2024"
 license = "Apache-2.0"
