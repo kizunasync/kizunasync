@@ -106,6 +106,8 @@ module.exports = () => {
         'expo-router',
         'expo-secure-store',
         'expo-status-bar',
+        // The engine's Android library requires API 26; Expo SDK 58 apps default to 24.
+        ['expo-build-properties', { android: { minSdkVersion: 26 } }],
       ],
       extra: {
         supabaseUrl,

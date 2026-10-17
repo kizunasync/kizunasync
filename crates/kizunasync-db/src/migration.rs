@@ -149,7 +149,8 @@ fn preserve(path: &Path) -> Result<()> {
                 };
                 let target = stage.join(filename);
                 fs::copy(&source, &target)?;
-                File::open(&target)?.sync_all()?;
+                // FlushFileBuffers needs a writable handle on Windows.
+                OpenOptions::new().write(true).open(&target)?.sync_all()?;
                 let checksum = digest(&target)?;
                 let after = source.metadata()?;
                 if metadata.len() != after.len()
@@ -182,6 +183,8 @@ fn preserve(path: &Path) -> Result<()> {
             serde_json::to_writer(&mut file, &manifest)
                 .map_err(|error| Error::Value(error.to_string()))?;
             file.sync_all()?;
+            // Windows refuses to rename a directory that holds an open file.
+            drop(file);
             verify_snapshot(&stage)?;
             #[cfg(unix)]
             File::open(&stage)?.sync_all()?;

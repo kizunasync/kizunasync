@@ -92,10 +92,7 @@ The script cross-compiles `kizunasync-ffi` for arm64-v8a, armeabi-v7a, and x86_6
 
 ### React Native Turbo Module
 
-Expo SDK 58 uses the Expo Modules API 2.0 host and does not require regenerating
-the separate Turbo Module below. Build matching Turso native artifacts and use
-the local package/Maven overrides in [Turso migration and recovery](../operations/turso-migration.md)
-while those artifacts are unpublished.
+Expo SDK 58 uses the Expo Modules API 2.0 host and does not require regenerating the separate Turbo Module below. To run an app against a local engine build, build matching Turso native artifacts and use the local package and Maven overrides in [Turso migration and recovery](../operations/turso-migration.md).
 
 From `packages/rn-uniffi`:
 

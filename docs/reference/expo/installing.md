@@ -70,11 +70,11 @@ TypeScript resolves `openExpoDriver` from `kizunasync/expo`.
 
 ## Native engine
 
-The Expo Modules API 2.0 host inside `kizunasync` links a prebuilt engine library on iOS and Android. Both platforms fetch the library at the exact version of `kizunasync` from the registries the Swift and Kotlin clients use. This source migration requires freshly built Turso artifacts before publishing; the previously published binaries still contain the older engine. [Turso migration and recovery](../../operations/turso-migration.md) describes the local build overrides and release checks.
+The Expo Modules API 2.0 host inside `kizunasync` links a prebuilt engine library on iOS and Android. Both platforms fetch the library at the exact version of `kizunasync` from the registries the Swift and Kotlin clients use. The Turso engine needs native artifacts built from the same source version; [Turso migration and recovery](../../operations/turso-migration.md) describes the local build overrides and release checks.
 
 On iOS, `pod install` adds the `KizunaSyncFfi` product of the Swift package `https://github.com/kizunasync/kizunasync-swift` to the Pods project through React Native's `spm_dependency` helper, and Xcode fetches that package when it builds the app. The library requires iOS 16 or later. Expo SDK 58 sets its own floor at iOS 16.4, above that minimum, so an Expo app needs no change for it.
 
-On Android, Gradle resolves `com.kizunasync:kizunasync` and its transitive `kizunasync-engine` dependency from Maven Central. That artifact carries the library for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, and the module builds for the architectures in that list that the app also targets. A 32-bit `x86` emulator cannot load the engine, so run an emulator image for `x86_64` or `arm64-v8a`.
+On Android, Gradle resolves `com.kizunasync:kizunasync` and its transitive `kizunasync-engine` dependency from Maven Central. That artifact carries the library for `arm64-v8a`, `armeabi-v7a`, and `x86_64`, and the module builds for the architectures in that list that the app also targets. A 32-bit `x86` emulator cannot load the engine, so run an emulator image for `x86_64` or `arm64-v8a`. The library requires Android API 26 (minSdk 26), and Expo SDK 58 apps default to 24, so add the `expo-build-properties` plugin with `android: { minSdkVersion: 26 }` to the app config before running `npx expo prebuild`.
 
 Expo Go cannot run the engine, because it loads no custom native code. A development build (`npx expo run:ios` / `npx expo run:android`, or EAS Build) is required on iOS and Android, and the engine joins the app during that build; a JavaScript reload or a plain install does not add it. [Rust engine](./rust-engine.md) covers when the client selects it.
 
