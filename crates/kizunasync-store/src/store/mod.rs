@@ -14,18 +14,14 @@ use crate::VfsKind;
 use crate::error::StoreError;
 use crate::schema::{BOOTSTRAP_CURSOR, CURSOR_KEY, SCHEMA};
 use crate::transaction::TransactionScope;
-#[cfg(target_arch = "wasm32")]
-use crate::wasm_vfs::BestVfs;
-#[cfg(target_arch = "wasm32")]
-use rusqlite::OpenFlags;
-use rusqlite::{Connection, OptionalExtension, params};
+use kizunasync_db::{Connection, OptionalExtension, params};
 use std::path::Path;
 
 /// A single `SQLite` local store: rows, outbox, tombstones, dead letters,
 /// rejections, overwrites, attachments, the ids of pushed writes, and the
 /// `_kizunasync_meta` bookkeeping table, opened over one connection.
 ///
-/// `Send` and not `Sync` (it owns a `rusqlite::Connection`): one store serves
+/// `Send` and not `Sync` (it owns a `kizunasync_db::Connection`): one store serves
 /// one thread at a time.
 pub struct LocalStore {
     conn: Connection,
@@ -117,12 +113,7 @@ impl LocalStore {
     /// schema migration fails.
     #[cfg(target_arch = "wasm32")]
     pub async fn open_path_async(name: &str) -> Result<Self, StoreError> {
-        let (kind, vfs_name) = match crate::wasm_vfs::install_best_vfs(name).await? {
-            BestVfs::Persistent { kind, vfs_name } => (kind, vfs_name),
-            BestVfs::Memory => return Self::open_in_memory(),
-        };
-        let conn =
-            Connection::open_with_flags_and_vfs(name, OpenFlags::default(), vfs_name.as_str())?;
+        let (conn, kind) = crate::wasm_vfs::open(name).await?;
         Self::finish_open(conn, kind)
     }
 
@@ -133,6 +124,7 @@ impl LocalStore {
         let store = Self { conn, kind };
         store.set_journal_mode()?;
         store.init()?;
+        store.conn.finish_migration()?;
         Ok(store)
     }
 

@@ -3,7 +3,7 @@ use crate::error::StoreError;
 use crate::types::{
     DeadLetterEntry, DeadLetterRecord, RejectionKind, RejectionRecord, op_as_str, stored,
 };
-use rusqlite::params;
+use kizunasync_db::params;
 use std::collections::BTreeSet;
 
 impl LocalStore {

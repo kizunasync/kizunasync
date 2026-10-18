@@ -169,7 +169,7 @@ impl Transfer for ConfirmWatcher {
         _meta: &ConfirmMeta,
         _table: &str,
     ) -> Result<(), TransferError> {
-        let conn = rusqlite::Connection::open(&self.db).expect("open raw");
+        let conn = kizunasync_db::Connection::open(&self.db).expect("open raw");
         let in_flight: i64 = conn
             .query_row(
                 "SELECT in_flight FROM _kizunasync_attachments WHERE ref = ?1",
@@ -1028,7 +1028,7 @@ async fn from_file_evicts_the_job_when_apply_fails() {
 
     // Triggers are schema objects, so a second connection can install one
     // that aborts the outbox write `from_file`'s apply performs.
-    rusqlite::Connection::open(&db)
+    kizunasync_db::Connection::open(&db)
         .expect("open raw")
         .execute_batch(
             "CREATE TRIGGER fail_attachment_apply BEFORE INSERT ON _kizunasync_outbox

@@ -1,0 +1,8 @@
+{
+  "name": "kizunasync-napi",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "build": "cargo build --manifest-path ../../Cargo.toml --package kizunasync-napi --locked"
+  }
+}

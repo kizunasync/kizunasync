@@ -31,6 +31,13 @@ use remote::JsRemote;
 /// A call that arrived before the page built an engine.
 const NOT_CREATED: &str = "create() has not been called on this engine";
 
+fn storage_error(error: &kizunasync_db::Error) -> EngineError {
+    EngineError::Store(kizunasync_store::StoreError::VfsUnavailable {
+        sahpool: error.to_string(),
+        relaxed_idb: error.to_string(),
+    })
+}
+
 /// The `ENGINE_UNAVAILABLE` envelope, built by the engine so it is byte-identical
 /// to the one [`rpc::dispatch`] returns for every other failure and the page
 /// keeps a single parser.
@@ -159,6 +166,10 @@ impl KizunaSyncWasmEngine {
                 Arc::new(JsRemote::new(pull, push)),
                 clock::deps(),
             );
+            // Scope and identity initialization must be durable before READY.
+            kizunasync_db::browser::flush()
+                .await
+                .map_err(|error| refused(&storage_error(&error)))?;
             // The engine drops its listeners with itself, so the unsubscribe
             // handle (which borrows the engine) is released before it is stored.
             drop(engine.subscribe(event_sink(observers)));
@@ -189,6 +200,11 @@ impl KizunaSyncWasmEngine {
             };
 
             let response = rpc::dispatch(&engine, &method, &params).await;
+            if let Err(error) = kizunasync_db::browser::flush().await {
+                return Ok(JsValue::from_str(&rpc::error_envelope(&storage_error(
+                    &error,
+                ))));
+            }
             Ok(JsValue::from_str(&response))
         })
     }

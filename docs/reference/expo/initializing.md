@@ -10,7 +10,7 @@ audience: app-developer
 
 # Expo: Initializing
 
-On React Native the app client needs a driver that names the local database and brings the device's network and foreground signals, which a browser provides on its own. `openExpoDriver` is that driver: it names the expo-sqlite file and carries a NetInfo [connectivity](./create-expo-connectivity.md) port and an `AppState` [foreground](./create-expo-foreground.md) port. [`createSupabaseKizunaSync`](../javascript/initializing.md) builds one [`IKizunaSync`](../javascript/types.md) client over it after `kizunasync init` has provisioned the Supabase project.
+On React Native the app client needs a driver that names the local database and brings the device's network and foreground signals, which a browser provides on its own. `openExpoDriver` is that driver: it names the existing local database file and carries a NetInfo [connectivity](./create-expo-connectivity.md) port and an `AppState` [foreground](./create-expo-foreground.md) port. [`createSupabaseKizunaSync`](../javascript/initializing.md) builds one [`IKizunaSync`](../javascript/types.md) client over it after `kizunasync init` has provisioned the Supabase project.
 
 The app builds that client once, at module scope, in `src/kizunasync.ts`, and the root layout `src/app/_layout.tsx` wraps the navigator in the provider. [Expo / React Native](../../getting-started/expo.md) walks through the full wiring, from the Supabase client to a screen that reads and writes.
 
@@ -66,7 +66,7 @@ export const kizunasync = createSupabaseKizunaSync({
 ```ts
 // src/supabase-client.ts
 import 'react-native-url-polyfill/auto'
-import 'expo-sqlite/localStorage/install'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { AppState } from 'react-native'
 import { createClient } from '@supabase/supabase-js'
 
@@ -75,7 +75,7 @@ export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
   {
     auth: {
-      storage: localStorage,
+      storage: AsyncStorage,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
@@ -141,7 +141,7 @@ The Expo-specific arguments to `createSupabaseKizunaSync`. [JavaScript: Initiali
 
 | Name | Type | Required | Description |
 |---|---|---|---|
-| `driver` | `IStoreLocator` | Yes | The local store. `openExpoDriver(name)` for the default expo-sqlite path, or `openOpSqliteDriver(name, { location })` for the op-sqlite one. Both return synchronously, name the file the [Rust engine](./rust-engine.md) opens, and carry the NetInfo and `AppState` ports as `platformPorts`. |
+| `driver` | `IStoreLocator` | Yes | The local store. `openExpoDriver(name)` for the default native database path, or `openOpSqliteDriver(name, { location })` for the op-sqlite one. Both return synchronously, name the file the [Rust engine](./rust-engine.md) opens, and carry the NetInfo and `AppState` ports as `platformPorts`. |
 | `connectivity` | `IConnectivity` | No | Replaces the driver's network signal for the sync loop. Pass one for a different gate, such as [`createExpoConnectivity({ gate: 'internet-reachable' })`](./create-expo-connectivity.md) or a port of your own. Default: the driver's NetInfo port, which gates on the radio state. |
 | `foreground` | `IForeground` | No | Replaces the driver's app-became-visible signal. Pass one only when your own code decides what counts as a return to the foreground. Default: the driver's `AppState` port, the one [`createExpoForeground()`](./create-expo-foreground.md) builds. |
 | `fileStore` | `IFileStore` | No | Required when a table declares an attachment column. Build it with [`openExpoFileStore()`](./open-expo-file-store.md). Default: none, and every `attachments` method rejects with `ATTACHMENT_PORTS_MISSING`. |
@@ -156,7 +156,7 @@ The Expo-specific arguments to `createSupabaseKizunaSync`. [JavaScript: Initiali
 | Code | Condition |
 |---|---|
 | `ATTACHMENT_PORTS_MISSING` | Thrown by `createSupabaseKizunaSync` when a table in `defineConfig` declares an attachment column and the client was built without both `fileStore` and `transfer`. [ATTACHMENT_PORTS_MISSING](../../operations/troubleshooting.md#attachment_ports_missing) names the two ports. |
-| `ENGINE_UNAVAILABLE` | Not thrown here. The first engine call fails with it when the engine cannot open: in Expo Go, which carries no build of the engine, or when expo-sqlite cannot open the database or report its path. The client keeps that error, so every later call reports it too, and the hooks show it as their error state. [Rust engine](./rust-engine.md#when-neither-condition-holds) covers the causes. |
+| `ENGINE_UNAVAILABLE` | Not thrown here. The first engine call fails with it when the engine cannot open: in Expo Go, which carries no build of the engine, or when the native Expo host cannot open the database or resolve its path. The client keeps that error, so every later call reports it too, and the hooks show it as their error state. [Rust engine](./rust-engine.md#when-neither-condition-holds) covers the causes. |
 | `AUTH_SESSION_TIMEOUT` | Not thrown here. A session lookup that does not settle within `sessionTimeoutMs`, 10 seconds by default, fails one sync attempt retryably and leaves the write queued. [Sync](../javascript/sync.md#errors) lists it with the other retryable failures. |
 
 `openOpSqliteDriver` throws a plain `Error` when `location` is missing, while `src/kizunasync.ts` loads; [op-sqlite driver](./open-op-sqlite-driver.md) quotes it. On Expo web, an engine binary Metro did not register as an asset fails the engine calls with `ENGINE_UNAVAILABLE` rather than the module's import, as [Open the SQLite driver](./open-expo-driver.md#errors) describes.
@@ -169,7 +169,7 @@ On a return to the foreground the app client does three things before the next r
 
 Supabase's own client needs the separate `AppState` listener in `src/supabase-client.ts`. [`startAutoRefresh`](https://supabase.com/docs/reference/javascript/auth-startautorefresh#examples) keeps its stored token current, and [`stopAutoRefresh`](https://supabase.com/docs/reference/javascript/auth-stopautorefresh#examples) stops the timer in the background. Supabase pairs the same listener with a Realtime reconnect in [Reconnect when a React Native app comes to the foreground](https://supabase.com/docs/guides/troubleshooting/realtime-heartbeat-messages#reconnect-when-react-native-app-comes-to-foreground).
 
-`src/supabase-client.ts` persists the Supabase session in the `localStorage` that `expo-sqlite` installs, the way Supabase's [Expo quickstart](https://supabase.com/docs/guides/getting-started/quickstarts/expo-react-native) does, so queued writes keep the same identity after a relaunch. With `anonymousSignIn: true` the app client restores that stored user rather than signing in a new one. An app with its own sign-in screen signs the user in with supabase-js, and the next sync carries that session. [Expo / React Native](../../getting-started/expo.md#2-connect-supabase) walks the whole step, including the environment variables a physical device needs.
+`src/supabase-client.ts` persists the Supabase session in `AsyncStorage`, the way Supabase's [Expo quickstart](https://supabase.com/docs/guides/getting-started/quickstarts/expo-react-native) does, so queued writes keep the same identity after a relaunch. With `anonymousSignIn: true` the app client restores that stored user rather than signing in a new one. An app with its own sign-in screen signs the user in with supabase-js, and the next sync carries that session. [Expo / React Native](../../getting-started/expo.md#2-connect-supabase) walks the whole step, including the environment variables a physical device needs.
 
 A `byOwner` bucket needs no [`setBucket`](../javascript/set-bucket.md) call: the engine fills it with the signed-in user, also offline after a restart. A different user signing in on the same device soft-blocks sync with `identity_changed` until [`reset()`](../javascript/reset.md) runs, so an account switch is a `reset()`.
 

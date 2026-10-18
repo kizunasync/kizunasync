@@ -304,10 +304,10 @@ describe('public documentation registry', () => {
     }
   })
 
-  test('expo guide documents UniFFI and the React Native module', () => {
+  test('expo guide documents UniFFI and Expo Modules API 2.0', () => {
     const source = readFileSync(join(REPO_ROOT, 'docs/getting-started/expo.md'), 'utf8')
 
-    assert.match(source, /React Native module inside `kizunasync`/)
+    assert.match(source, /Expo Modules API 2.0 host inside `kizunasync`/)
     assert.match(source, /UniFFI/)
   })
 
@@ -919,6 +919,8 @@ describe('repository Markdown links', () => {
       .trim()
       .split('\n')
       .filter((file) => file.length > 0 && existsSync(join(REPO_ROOT, file)))
+      // Upstream docs link outside the published crate; our vendor/README stays checked.
+      .filter((file) => !file.startsWith('vendor/turso-core/'))
     const anchorCache = new Map<string, Set<string>>()
     const anchorsFor = (path: string): Set<string> => {
       const cached = anchorCache.get(path)
@@ -1104,11 +1106,15 @@ describe('hook and CLI surfaces stay pinned to their owners', () => {
     }
   })
 
-  test('rust-ci clippy flags match turbo.json kizunasync-cargo#lint', () => {
-    const turbo = JSON.parse(readFileSync(join(REPO_ROOT, 'turbo.json'), 'utf8')) as {
-      tasks: Record<string, { command?: string[] }>
+  test('rust-ci clippy flags match the Cargo task adapter', () => {
+    const adapter = JSON.parse(readFileSync(join(REPO_ROOT, 'tools/cargo/package.json'), 'utf8')) as {
+      scripts: { lint: string }
     }
-    const command = turbo.tasks['kizunasync-cargo#lint']?.command ?? []
+    const command = adapter.scripts.lint.split(' ').filter((token) =>
+      token !== '--manifest-path' && token !== '../../Cargo.toml',
+    )
+
+    assert.ok(command.length > 0, 'the adapter must declare its Clippy command')
     const workflow = readFileSync(join(REPO_ROOT, '.github/workflows/rust-ci.yml'), 'utf8')
     const step = workflow.split('- name: cargo clippy')[1]?.split('- name:')[0] ?? ''
 

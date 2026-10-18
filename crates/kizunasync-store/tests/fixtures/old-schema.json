@@ -1,0 +1,489 @@
+{
+  "_kizunasync_attachments": {
+    "columns": [
+      "ref",
+      "upload_id",
+      "table_name",
+      "pk",
+      "column_name",
+      "bucket",
+      "owner",
+      "sha256",
+      "content_type",
+      "size",
+      "local_path",
+      "direction",
+      "state",
+      "in_flight",
+      "fingerprint",
+      "progress",
+      "attempts",
+      "permanent",
+      "chunk_offset",
+      "tus_url",
+      "error",
+      "created_at",
+      "updated_at"
+    ],
+    "rows": [
+      [
+        "attachment-1",
+        "upload-1",
+        "todos",
+        "offline-0",
+        "attachment",
+        "media",
+        "user-1",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "application/octet-stream",
+        7340032,
+        "/synthetic/pending-attachment.bin",
+        "upload",
+        "uploading",
+        0,
+        "fingerprint-1",
+        6291456,
+        2,
+        0,
+        6291456,
+        "https://example.invalid/synthetic-upload",
+        "retryable",
+        "2026-10-16T00:00:00Z",
+        "2026-10-16T00:00:00Z"
+      ]
+    ]
+  },
+  "_kizunasync_dead_letter": {
+    "columns": [
+      "id",
+      "mutation_id",
+      "table_name",
+      "pk",
+      "op",
+      "columns_json",
+      "reason",
+      "server_row_json",
+      "created_at"
+    ],
+    "rows": [
+      [
+        1,
+        "dead-1",
+        "todos",
+        "dead-row",
+        "insert",
+        "{\"title\":\"dead\"}",
+        "PERMANENT_TRANSPORT",
+        null,
+        "2026-10-16T00:00:00Z"
+      ]
+    ]
+  },
+  "_kizunasync_meta": {
+    "columns": [
+      "key",
+      "value"
+    ],
+    "rows": [
+      [
+        "cursor",
+        "900719925474099312345"
+      ],
+      [
+        "client_id",
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      [
+        "origin_hlc",
+        "1792108800000|9|device-1"
+      ],
+      [
+        "last_mutation_id",
+        "mutation-9"
+      ],
+      [
+        "custom_nullable_marker",
+        "kept"
+      ]
+    ]
+  },
+  "_kizunasync_outbox": {
+    "columns": [
+      "seq",
+      "mutation_id",
+      "table_name",
+      "pk",
+      "op",
+      "columns_json",
+      "precondition_json",
+      "base_hint_json",
+      "batch_id",
+      "pre_image_json",
+      "hlc",
+      "created_at",
+      "in_flight",
+      "transforms_json"
+    ],
+    "rows": [
+      [
+        1,
+        "mutation-0",
+        "todos",
+        "offline-0",
+        "insert",
+        "{\"id\":\"offline-0\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 0\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        "batch-1",
+        null,
+        "1792108800000|0|device-1",
+        "2026-10-16T00:00:00Z",
+        1,
+        null
+      ],
+      [
+        2,
+        "mutation-1",
+        "todos",
+        "offline-1",
+        "insert",
+        "{\"id\":\"offline-1\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 1\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        "batch-1",
+        null,
+        "1792108800000|1|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        3,
+        "mutation-2",
+        "todos",
+        "offline-2",
+        "insert",
+        "{\"id\":\"offline-2\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 2\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        "batch-1",
+        null,
+        "1792108800000|2|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        4,
+        "mutation-3",
+        "todos",
+        "offline-3",
+        "insert",
+        "{\"id\":\"offline-3\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 3\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        "batch-1",
+        null,
+        "1792108800000|3|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        5,
+        "mutation-4",
+        "todos",
+        "offline-4",
+        "insert",
+        "{\"id\":\"offline-4\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 4\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        "batch-1",
+        null,
+        "1792108800000|4|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        6,
+        "mutation-5",
+        "todos",
+        "offline-5",
+        "insert",
+        "{\"id\":\"offline-5\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 5\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        null,
+        null,
+        "1792108800000|5|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        7,
+        "mutation-6",
+        "todos",
+        "offline-6",
+        "insert",
+        "{\"id\":\"offline-6\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 6\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        null,
+        null,
+        "1792108800000|6|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        8,
+        "mutation-7",
+        "todos",
+        "offline-7",
+        "insert",
+        "{\"id\":\"offline-7\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 7\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        null,
+        null,
+        "1792108800000|7|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        9,
+        "mutation-8",
+        "todos",
+        "offline-8",
+        "insert",
+        "{\"id\":\"offline-8\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 8\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        null,
+        null,
+        "1792108800000|8|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ],
+      [
+        10,
+        "mutation-9",
+        "todos",
+        "offline-9",
+        "insert",
+        "{\"id\":\"offline-9\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 9\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        null,
+        null,
+        null,
+        null,
+        "1792108800000|9|device-1",
+        "2026-10-16T00:00:00Z",
+        0,
+        null
+      ]
+    ]
+  },
+  "_kizunasync_overwrites": {
+    "columns": [
+      "id",
+      "table_name",
+      "pk",
+      "column_name",
+      "loser_value",
+      "winner_mutation_id",
+      "conflict_mode",
+      "winner_seq",
+      "at",
+      "dismissed"
+    ],
+    "rows": [
+      [
+        1,
+        "todos",
+        "overwritten",
+        "title",
+        "\"local\"",
+        "winner-1",
+        "hlc",
+        "9007199254740993",
+        1792108800000,
+        0
+      ]
+    ]
+  },
+  "_kizunasync_pull_pages": {
+    "columns": [
+      "page_no",
+      "body"
+    ],
+    "rows": [
+      [
+        1,
+        "{\"cursor\":\"900719925474099312345\",\"changes\":[]}"
+      ]
+    ]
+  },
+  "_kizunasync_pushed": {
+    "columns": [
+      "mutation_id",
+      "pushed_at"
+    ],
+    "rows": [
+      [
+        "already-pushed",
+        "2026-10-16T00:00:00Z"
+      ]
+    ]
+  },
+  "_kizunasync_rejections": {
+    "columns": [
+      "mutation_id",
+      "table_name",
+      "pk",
+      "kind",
+      "reason",
+      "changed_columns",
+      "server_row",
+      "at",
+      "dismissed"
+    ],
+    "rows": [
+      [
+        "rejected-1",
+        "todos",
+        "rejected-row",
+        "REJECTED",
+        "policy",
+        "[\"title\"]",
+        "{\"title\":\"server\"}",
+        1792108800000,
+        0
+      ]
+    ]
+  },
+  "_kizunasync_rows": {
+    "columns": [
+      "table_name",
+      "pk",
+      "row_json",
+      "deleted",
+      "updated_seq"
+    ],
+    "rows": [
+      [
+        "todos",
+        "offline-0",
+        "{\"id\":\"offline-0\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 0\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-1",
+        "{\"id\":\"offline-1\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 1\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-2",
+        "{\"id\":\"offline-2\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 2\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-3",
+        "{\"id\":\"offline-3\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 3\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-4",
+        "{\"id\":\"offline-4\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 4\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-5",
+        "{\"id\":\"offline-5\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 5\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-6",
+        "{\"id\":\"offline-6\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 6\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-7",
+        "{\"id\":\"offline-7\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 7\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-8",
+        "{\"id\":\"offline-8\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 8\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ],
+      [
+        "todos",
+        "offline-9",
+        "{\"id\":\"offline-9\",\"user_id\":\"u1\",\"title\":\"Unsynced edit 9\",\"unicode\":\"絆 🧪\",\"done\":false}",
+        0,
+        "9007199254740993"
+      ]
+    ]
+  },
+  "_kizunasync_tombstones": {
+    "columns": [
+      "table_name",
+      "pk",
+      "seq",
+      "deleted_at"
+    ],
+    "rows": [
+      [
+        "todos",
+        "deleted-row",
+        "9007199254740993",
+        "2026-10-16T00:00:00Z"
+      ]
+    ]
+  },
+  "sqlite_sequence": {
+    "columns": [
+      "name",
+      "seq"
+    ],
+    "rows": [
+      [
+        "_kizunasync_outbox",
+        10
+      ],
+      [
+        "_kizunasync_dead_letter",
+        1
+      ],
+      [
+        "_kizunasync_overwrites",
+        1
+      ],
+      [
+        "_kizunasync_pull_pages",
+        1
+      ]
+    ]
+  }
+}

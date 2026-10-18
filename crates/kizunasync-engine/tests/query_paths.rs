@@ -14,6 +14,7 @@
 // not a runtime fault.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use kizunasync_db::{Connection, params};
 use kizunasync_engine::{
     ApplyWhere, ConflictMode, DEFAULT_ATTACHMENT_ATTEMPTS, EngineConfig, EngineDeps, EngineError,
     ScriptedRemote, SyncEngine, SyncMode, TableConfig,
@@ -23,7 +24,6 @@ use kizunasync_query::{
     Filter, OrderBy, QueryError, QueryPlan, QueryResult, Row, apply_query, matches_filter,
 };
 use kizunasync_store::{LocalStore, StoreError};
-use rusqlite::{Connection, params};
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;

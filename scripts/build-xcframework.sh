@@ -94,6 +94,7 @@ xcodebuild -create-xcframework \
   -output "$OUT"
 
 test -d "$OUT"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$OUT/THIRD_PARTY_NOTICES.md"
 echo "xcframework OK: $OUT"
 find "$OUT" -maxdepth 3 -type f | sort
 

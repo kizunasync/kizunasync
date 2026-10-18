@@ -1,9 +1,9 @@
 use crate::error::StoreError;
-use rusqlite::Connection;
+use kizunasync_db::Connection;
 
 /// A `BEGIN IMMEDIATE` scope that rolls back unless it is committed.
 ///
-/// `rusqlite::Connection::transaction` needs `&mut Connection` while every store
+/// `kizunasync_db::Connection::transaction` needs `&mut Connection` while every store
 /// method takes `&self`, so the scope is driven by raw statements instead. `Drop`
 /// is the safety net: an early return, a `?`, or an unwind releases the guard and
 /// the partial write is undone.

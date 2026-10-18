@@ -106,7 +106,12 @@ export const PRIVATE_LAYOUT: IWorkspaceLayout[] = [
   { name: '@kizunasync/react', dir: 'packages/react', isBuilt: true, placements: [{ from: 'dist', to: 'dist/react' }] },
   { name: '@kizunasync/vue', dir: 'packages/vue', isBuilt: true, placements: [{ from: 'dist', to: 'dist/vue' }] },
   { name: '@kizunasync/web', dir: 'packages/web', isBuilt: false, placements: [{ from: 'src', to: 'dist/web' }] },
-  { name: '@kizunasync/expo', dir: 'packages/expo', isBuilt: false, placements: [{ from: 'src', to: 'dist/expo' }] },
+  { name: '@kizunasync/expo', dir: 'packages/expo', isBuilt: false, placements: [
+    { from: 'src', to: 'dist/expo' },
+    { from: 'ios', to: 'expo/ios' },
+    { from: 'android', to: 'expo/android' },
+    ...['expo-module.config.json', 'KizunaSyncExpo.podspec'].map(unmoved),
+  ] },
   { name: RN_UNIFFI_PACKAGE_NAME, dir: 'packages/rn-uniffi', isBuilt: false, placements: ['src', 'ios', 'android', 'RnUniffi.podspec', 'ubrn.config.yaml'].map(unmoved) },
 ]
 
@@ -533,6 +538,7 @@ export function placeWorkspace(layout: IWorkspaceLayout, packedDir: string, stag
 
 function copyRootLicense(packageDir: string): void {
   cpSync(join(REPO_ROOT, LICENSE_FILE), join(packageDir, LICENSE_FILE))
+  cpSync(join(REPO_ROOT, 'THIRD_PARTY_NOTICES.md'), join(packageDir, 'THIRD_PARTY_NOTICES.md'))
 }
 
 function stagedTopLevelFiles(stagedRoot: string): string[] {
@@ -617,6 +623,12 @@ function stagePublicPackage(version: string, outDir: string): void {
     rmSync(tmpDir, { recursive: true, force: true })
   }
   copyRootLicense(stagedRoot)
+  const expoConfigPath = join(stagedRoot, 'expo-module.config.json')
+  const expoConfig = JSON.parse(readFileSync(expoConfigPath, 'utf8'))
+
+  expoConfig.android.path = 'expo/android'
+  writeFileSync(expoConfigPath, `${JSON.stringify(expoConfig, null, 2)}\n`)
+
 
   const privateWorkspaces = PRIVATE_LAYOUT.map((layout) => ({ layout, pkg: readWorkspacePackageJson(layout.dir) }))
   const privatePackages = privateWorkspaces.map(({ pkg }) => pkg)

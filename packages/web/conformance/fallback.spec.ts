@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { openEngine, openEngineExpectingFailure, PAGE_PATH, readStoreKind } from './harness'
+import { callEngine, closeEngines, insertRow, openEngine, openEngineExpectingFailure, PAGE_PATH, readRowIds, readStoreKind } from './harness'
 
 // MARK: - The IndexedDB fallback
 
@@ -43,4 +43,41 @@ test('the open fails with STORE_UNAVAILABLE when an OPFS that exists fails', asy
   const databases = await page.evaluate(async () => (await indexedDB.databases()).map((entry) => entry.name ?? '?'))
 
   expect(databases).not.toContain('relaxed-idb')
+})
+
+test('pending writes stay in IndexedDB when OPFS becomes available', async ({ page }) => {
+  const name = 'fallback-then-opfs'
+
+  await page.goto(`${PAGE_PATH}?opfs=absent`)
+  await openEngine(page, { name, databasePath: name, table: 'items' })
+  await insertRow(page, { name, table: 'items', columns: { id: 'offline-before-upgrade' } })
+  await closeEngines(page)
+
+  await page.goto(PAGE_PATH)
+  await openEngine(page, { name, databasePath: name, table: 'items' })
+
+  expect(await readStoreKind(page)).toEqual(FALLBACK)
+  expect(await readRowIds(page, name, 'items')).toEqual(['offline-before-upgrade'])
+  expect(await callEngine(page, 'outbox_depth')).toBe(1)
+})
+
+test('losing OPFS access refuses an empty fallback and preserves pending writes for recovery', async ({ page }) => {
+  const name = 'opfs-permission-change'
+
+  await page.goto(PAGE_PATH)
+  await openEngine(page, { name, databasePath: name, table: 'items' })
+  await insertRow(page, { name, table: 'items', columns: { id: 'offline-before-permission-change' } })
+  await closeEngines(page)
+
+  await page.goto(`${PAGE_PATH}?opfs=off`)
+  const failure = await openEngineExpectingFailure(page, { name, databasePath: name })
+
+  expect(failure?.code).toBe('STORE_UNAVAILABLE')
+  expect(failure?.message).toContain('existing OPFS database is inaccessible')
+
+  await page.goto(PAGE_PATH)
+  await openEngine(page, { name, databasePath: name, table: 'items' })
+
+  expect(await readRowIds(page, name, 'items')).toEqual(['offline-before-permission-change'])
+  expect(await callEngine(page, 'outbox_depth')).toBe(1)
 })

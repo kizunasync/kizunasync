@@ -171,9 +171,9 @@ The `kizunasync init` wizard will ask one consent question in the spirit of "hel
 
 ### Expo Module over the UniFFI bindings
 
-Status: planned.
+Status: implemented in source; native release verification pending.
 
-When Expo SDK 58 ships Expo Modules 2.0 in beta, the React Native bridge becomes an Expo Module written as an annotated Swift and Kotlin class over the UniFFI bindings the native iOS and Android examples already use, replacing the generated Turbo Module and its C++ adapter in the `rn-uniffi` workspace. The JavaScript API of `kizunasync/expo` does not change. The module links the same `KizunaSyncEngine` product and `com.kizunasync:kizunasync-engine` artifact as the Turbo Module, built from the [XCFramework](./native-packaging.md#xcframework) and [AAR](./native-packaging.md#android-aar) lanes, so `npx expo run:ios` and `npx expo run:android` build it without a Rust toolchain in the application project. Expo Go stays unsupported, because it cannot load custom native code in any version, and a development build remains the supported path.
+The Expo SDK 58 integration uses annotated Swift and Kotlin classes over the UniFFI engine through Expo Modules API 2.0. The JavaScript `kizunasync/expo` API is unchanged. The typed Swift `KizunaSyncFfi` product and Android client AAR host the shared Turso engine. The bare React Native integration remains available separately. See [Turso migration and recovery](../operations/turso-migration.md) for the verification and matching-artifact release requirements.
 
 ### Local projects started with `supabase stack`
 

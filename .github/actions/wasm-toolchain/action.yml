@@ -2,7 +2,6 @@
 # targets. It provides:
 #
 # - The Rust wasm32 target,
-# - A wasm-capable clang required for sqlite-wasm-rs,
 # - binaryen for wasm-opt,
 # - and a version-locked wasm-bindgen CLI from Cargo.lock.
 #
@@ -16,7 +15,7 @@
 # the bundle together with its source.
 
 name: wasm toolchain
-description: Install Rust wasm32 target, clang, binaryen, and Cargo.lock-matched wasm-bindgen CLI.
+description: Install Rust wasm32 target, binaryen, and Cargo.lock-matched wasm-bindgen CLI.
 
 runs:
   using: composite
@@ -26,12 +25,6 @@ runs:
       with:
         toolchain: stable
         targets: wasm32-unknown-unknown
-
-    # sqlite-wasm-rs needs a clang with WebAssembly support.
-    # Ubuntu clang/LLVM ships this by default; Apple's does not.
-    - name: Install clang
-      shell: bash
-      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang
 
     # Ubuntu 22.04's binaryen is outdated and lacks wasm features emitted
     # by rustc 1.82+, so we install a newer pinned version, not from apt.
@@ -66,15 +59,3 @@ runs:
         fi
         echo "wasm-bindgen pinned to $version by Cargo.lock"
         cargo install wasm-bindgen-cli --version "$version" --locked
-
-    # cc-rs uses this variable to find the right clang for the wasm target.
-    - name: Export CC_wasm32_unknown_unknown
-      shell: bash
-      run: echo "CC_wasm32_unknown_unknown=clang" >> "$GITHUB_ENV"
-
-    # sqlite-wasm-rs expects C23-style attributes, but clang on Ubuntu defaults
-    # to gnu17, which doesn't allow them. Setting -std=gnu2x enables C23 mode
-    # (gnu2x is recognized by Clang 14+).
-    - name: Export CFLAGS_wasm32_unknown_unknown
-      shell: bash
-      run: echo "CFLAGS_wasm32_unknown_unknown=-std=gnu2x" >> "$GITHUB_ENV"

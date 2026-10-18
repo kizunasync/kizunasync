@@ -6,7 +6,7 @@ use thiserror::Error;
 pub enum StoreError {
     /// The underlying `SQLite` driver failed (open, prepare, or execute).
     #[error("sqlite: {0}")]
-    Sqlite(#[from] rusqlite::Error),
+    Sqlite(#[from] kizunasync_db::Error),
     /// A stored JSON payload could not be encoded or decoded.
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),

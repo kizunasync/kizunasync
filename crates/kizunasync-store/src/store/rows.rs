@@ -1,8 +1,8 @@
 use super::LocalStore;
 use crate::error::StoreError;
 use crate::types::{LocalMutation, LocalRow, OutboxEntry, op_as_str};
+use kizunasync_db::{OptionalExtension, params};
 use kizunasync_protocol::{ColumnValues, Op};
-use rusqlite::{OptionalExtension, params};
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
 

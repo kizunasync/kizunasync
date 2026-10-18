@@ -18,37 +18,24 @@ After that wiring, screens read and write the on-device [SQLite](https://grokipe
 - An Expo app that uses Expo Router with its routes under `src/app/` ([Expo's create-a-project guide](https://docs.expo.dev/get-started/create-a-project/)).
 - A way for users to sign in to Supabase: your own sign-in screen, or [anonymous sign-ins](https://supabase.com/docs/reference/javascript/auth-signinanonymously#examples) enabled on the project. Step 5 covers both.
 - Skim the [Expo reference introduction](../reference/expo/introduction.md) for drivers, the file store, and native engine notes.
-- Expo Go cannot run Kizuna's native engine: the Turbo Module compiles into the app binary during a native build. Use a development build (`npx expo run:ios` / `npx expo run:android`, or [EAS Build](https://docs.expo.dev/build/introduction/)) on iOS and Android; Expo web needs no native build.
+- Expo Go cannot run Kizuna's native engine: the Expo Modules API 2.0 host compiles into the app binary during a native build. Use a development build (`npx expo run:ios` / `npx expo run:android`, or [EAS Build](https://docs.expo.dev/build/introduction/)) on iOS and Android; Expo web needs no native build.
 
 ## 1. Install
 
-Install `kizunasync` from npm, which carries the `kizunasync/expo`, `kizunasync/supabase`, and `kizunasync/react` subpaths, then `expo-sqlite`, `expo-file-system`, `@react-native-community/netinfo`, `@supabase/supabase-js`, `react-native-url-polyfill`, and `expo-build-properties` with `npx expo install`, as shown in [Expo: Installing](../reference/expo/installing.md). That page gives the reason for each package.
+Install `kizunasync` from npm, which carries the `kizunasync/expo`, `kizunasync/supabase`, and `kizunasync/react` subpaths, then `expo-modules-core`, `@react-native-async-storage/async-storage`, `expo-file-system`, `@react-native-community/netinfo`, `@supabase/supabase-js`, `react-native-url-polyfill` with `npx expo install`, as shown in [Expo: Installing](../reference/expo/installing.md). That page gives the reason for each package.
 
-iOS 27 terminates an app that does not adopt the UIKit scene life cycle, and Expo SDK 57 adopts it when `expo-build-properties` sets `ios.enableSceneSupport`. Add the entry to the `plugins` array in `app.json`, after the plugins the app already lists (`app.config.js` takes the same entry):
-
-```json
-{
-  "expo": {
-    "plugins": [
-      "expo-router",
-      ["expo-build-properties", { "ios": { "enableSceneSupport": true } }]
-    ]
-  }
-}
-```
-
-Expo SDK 58 and later include scene support, so the entry applies to SDK 57 only. [iOS scene life cycle](../reference/expo/installing.md#ios-scene-life-cycle) lists the version requirements and how to regenerate the iOS project. You should now resolve `openExpoDriver` from `kizunasync/expo`.
+Use Expo SDK 58, which includes UIKit scene support. Remove the SDK 57 `enableSceneSupport` workaround when upgrading, then regenerate and rebuild the native projects as [Upgrading an installed app](../reference/expo/installing.md#upgrading-an-installed-app) describes. You should now resolve `openExpoDriver` from `kizunasync/expo`.
 
 ## 2. Connect Supabase
 
-Create the one Supabase client the whole app shares in `src/supabase-client.ts`. The app client runs pull, push, the Realtime doorbell, and Storage transfers through it, and the server judges every queued write under the session it holds, so that session has to survive a relaunch. Supabase's [Expo quickstart](https://supabase.com/docs/guides/getting-started/quickstarts/expo-react-native) persists it in a `localStorage` that `expo-sqlite` installs, and `expo-sqlite` is already a Kizuna peer. The file also imports `react-native-url-polyfill` first, as the same quickstart does; step 1 installed both packages.
+Create the one Supabase client the whole app shares in `src/supabase-client.ts`. The app client runs pull, push, the Realtime doorbell, and Storage transfers through it, and the server judges every queued write under the session it holds, so that session has to survive a relaunch. Supabase's [Expo quickstart](https://supabase.com/docs/guides/getting-started/quickstarts/expo-react-native) persists it in `AsyncStorage`, which the installation step includes. The file also imports `react-native-url-polyfill` first, as the same quickstart does; step 1 installed both packages.
 
 Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env.local`. On a physical device, use the development machine's reachable LAN address rather than `127.0.0.1`. The key value is a [publishable key](https://supabase.com/docs/guides/getting-started/api-keys#publishable-keys-and-public-components), and it is safe in the bundle because RLS decides every row regardless.
 
 ```ts
 // src/supabase-client.ts
 import 'react-native-url-polyfill/auto'
-import 'expo-sqlite/localStorage/install'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { AppState } from 'react-native'
 import { createClient } from '@supabase/supabase-js'
 
@@ -57,7 +44,7 @@ export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
   {
     auth: {
-      storage: localStorage,
+      storage: AsyncStorage,
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,
@@ -118,11 +105,11 @@ export const kizunasync = createSupabaseKizunaSync({
 })
 ```
 
-Creating the client opens nothing, so importing this module starts no engine, even during Expo Router's static rendering of web routes. The first query or write opens the database, and the first sync runs right away. On iOS and Android, [`openExpoDriver`](../reference/expo/open-expo-driver.md) names the `expo-sqlite` file and brings the device's network signal (NetInfo) and app state (AppState), so the client wakes when the network returns and when the app comes back to the foreground with nothing else to pass. That network signal follows NetInfo's `isConnected`, and [`createExpoConnectivity`](../reference/expo/create-expo-connectivity.md) describes the stricter `internet-reachable` gate, which you pass as the `connectivity` option.
+Creating the client opens nothing, so importing this module starts no engine, even during Expo Router's static rendering of web routes. The first query or write opens the database, and the first sync runs right away. On iOS and Android, [`openExpoDriver`](../reference/expo/open-expo-driver.md) names the existing local database file and brings the device's network signal (NetInfo) and app state (AppState), so the client wakes when the network returns and when the app comes back to the foreground with nothing else to pass. That network signal follows NetInfo's `isConnected`, and [`createExpoConnectivity`](../reference/expo/create-expo-connectivity.md) describes the stricter `internet-reachable` gate, which you pass as the `connectivity` option.
 
 The engine fills a `byOwner` bucket with the signed-in user's id and remembers that user in the local database, so after a relaunch the bucket and every new insert carry that user before the app reaches the network. A table without a bucket column takes no `bucket` option, and [Define config](../reference/javascript/define-config.md) lists the remaining options.
 
-On native iOS and Android, the app client runs the Rust engine through the React Native module inside `kizunasync` ([Rust engine](../reference/expo/rust-engine.md)), the [UniFFI](https://mozilla.github.io/uniffi-rs/) [Turbo Module](https://reactnative.dev/docs/turbo-native-modules-introduction) a development build links, and the driver from `openExpoDriver` loads that module on the client's first use. The Expo web target runs on the `kizunasync/web` driver, and Metro bundles that driver's worker as its own JavaScript bundle. [Build integration](../reference/javascript/build-integration.md) covers what Metro needs to bundle the engine binary that worker loads. [Project status](./status.md#engine-selection) records what each path is, and [Expo: Initializing](../reference/expo/initializing.md) lists every parameter.
+On native iOS and Android, the app client runs the Rust engine through the Expo Modules API 2.0 host inside `kizunasync` ([Rust engine](../reference/expo/rust-engine.md)). That host calls the shared [UniFFI](https://mozilla.github.io/uniffi-rs/) bindings, and `openExpoDriver` loads it on the client's first use. The Expo web target runs on the `kizunasync/web` driver, and Metro bundles that driver's worker as its own JavaScript bundle. [Build integration](../reference/javascript/build-integration.md) covers what Metro needs to bundle the engine binary that worker loads. [Project status](./status.md#engine-selection) records what each path is, and [Expo: Initializing](../reference/expo/initializing.md) lists every parameter.
 
 ## 4. Provide it to the app
 
@@ -244,7 +231,8 @@ Start a development build against your provisioned project with `npx expo run:io
 - A pull fails with `KZL01` when the config's bucket does not match the bucket column `kizunasync init` provisioned. Copy the bucket column from `kizunasync status` into `defineConfig`. See [KZL01](../operations/troubleshooting.md#kzl01).
 - Sync that soft-blocks with `identity_changed` after a relaunch means session persistence did not carry the anonymous user across, so a new anonymous user signed in and the engine held the queued writes back. Check the `storage` option in `src/supabase-client.ts`, and see [Sync soft-blocks after switching accounts](../operations/troubleshooting.md#sync-soft-blocks-after-switching-accounts).
 - If Metro cannot reach the bundler, disable the VPN or restart with `--localhost`.
-- On Expo SDK 57, the Expo web target needs `expo` 57.0.26 or later in development. With `expo` 57.0.25, `expo start` fails to bundle it with `Worker chunk not found for: .../expo-sqlite/web/worker.ts`, because lazy bundling leaves web-worker modules out of the graph, and `npx expo install expo` moves to the fixed release. Keep lazy bundling on and do not set `EXPO_NO_METRO_LAZY`, because Metro loads the Kizuna engine worker as a split bundle and with lazy bundling off the web driver cannot start that worker (`Bundle splitting is required for Web Worker imports`).
+- Expo SDK 58 requires lazy worker bundling on web. Keep `wasm` in Metro asset extensions and leave `EXPO_NO_METRO_LAZY` unset.
+
 
 ## Next steps
 

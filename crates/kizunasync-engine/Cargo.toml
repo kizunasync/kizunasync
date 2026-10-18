@@ -27,7 +27,7 @@ uuid = { workspace = true, features = ["js"] }
 [dev-dependencies]
 # Fault injection: the atomicity tests install a SQLite trigger that aborts one
 # statement mid-reconcile, which needs raw SQL against the engine's database.
-rusqlite = { workspace = true }
+kizunasync-db = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # `FakeTransfer` for the attachment-queue and attachment-missing-bytes tests.

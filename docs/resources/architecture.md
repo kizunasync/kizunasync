@@ -38,7 +38,7 @@ One Rust kernel does the synchronization work. Swift and Kotlin ship as generate
 
 There is no Rust app client. The kernel is embedder SPI in private workspace crates (`publish = false`). The [`kizunasync`](../cli/cli.md) CLI provisions the SQL pack rather than syncing rows, so it is not an app client either. [Kernel and app clients](../getting-started/how-kizuna-works.md#kernel-and-app-clients) covers the same split for application code, and [Repository layout](./repository-layout.md) names the paths, crates, and imports.
 
-The local store is `rusqlite` inside the kernel on every runtime. Swift and Kotlin are thin UniFFI hosts: they pass `databasePath` and a complete `remote`, and HTTP runs in Rust. On the JavaScript N-API path the kernel opens that same `rusqlite` store; HTTP is the exception, because the addon calls back into the host remote so [supabase-js](https://supabase.com/docs/reference/javascript/introduction) can attach the session.
+The local store is `kizunasync-db` (Turso) inside the kernel on every runtime. Swift and Kotlin are thin UniFFI hosts: they pass `databasePath` and a complete `remote`, and HTTP runs in Rust. On the JavaScript N-API path the kernel opens that same `kizunasync-db` (Turso) store; HTTP is the exception, because the addon calls back into the host remote so [supabase-js](https://supabase.com/docs/reference/javascript/introduction) can attach the session.
 
 The shared [conformance corpus](./glossary.md#conformance-corpus) and conflict vectors check the one engine's behavior on each runtime that runs it. They do not stand in for platform-specific storage and lifecycle testing, which [Match the test to the claim](../operations/test-offline-behavior.md#6-match-the-test-to-the-claim) separates case by case.
 

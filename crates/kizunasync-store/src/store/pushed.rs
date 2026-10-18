@@ -1,6 +1,6 @@
 use super::LocalStore;
 use crate::error::StoreError;
-use rusqlite::params;
+use kizunasync_db::params;
 
 /// How many pushed mutation ids [`LocalStore::record_pushed`] keeps: the newest
 /// ones, so a conflict a pull delivers about a recent write of this device is

@@ -2,8 +2,8 @@ use super::LocalStore;
 use crate::error::StoreError;
 use crate::schema::{BOOTSTRAP_CURSOR, CLIENT_ID_KEY, LAST_MUTATION_ID_KEY, ORIGIN_HLC_KEY};
 use crate::transaction::TransactionScope;
+use kizunasync_db::params;
 use kizunasync_protocol::ColumnValues;
-use rusqlite::params;
 
 impl LocalStore {
     /// Upsert the authoritative row a pull carried and clear any tombstone
@@ -178,7 +178,7 @@ impl LocalStore {
                 "SELECT local_path FROM _kizunasync_attachments WHERE local_path IS NOT NULL",
             )?;
             let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-            rows.collect::<Result<Vec<String>, rusqlite::Error>>()?
+            rows.collect::<Result<Vec<String>, kizunasync_db::Error>>()?
         };
 
         let tx = TransactionScope::begin(&self.conn)?;

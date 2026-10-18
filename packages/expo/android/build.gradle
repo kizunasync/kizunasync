@@ -1,0 +1,38 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.kizunasync.expo'
+def packageFile = file('../package.json').exists() ? file('../package.json') : file('../../package.json')
+version = new groovy.json.JsonSlurper().parse(packageFile).version
+
+expoModule {
+  v2 true
+}
+
+android {
+  namespace 'com.kizunasync.expo'
+  defaultConfig {
+    minSdkVersion 26
+  }
+}
+
+def localEngine = System.getenv('KIZUNASYNC_MAVEN_REPO')
+if (localEngine) {
+  // App runtime dependencies resolve in the app's repositories too.
+  rootProject.allprojects {
+    repositories {
+      exclusiveContent {
+        forRepository { maven { url = uri(localEngine) } }
+        filter { includeGroup('com.kizunasync') }
+      }
+    }
+  }
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+  implementation "com.kizunasync:kizunasync:${version}"
+}

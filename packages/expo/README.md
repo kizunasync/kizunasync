@@ -13,10 +13,10 @@ This workspace is private. Apps install the `kizunasync` package and import it a
 
 ```bash
 npm install kizunasync
-npx expo install expo-sqlite expo-file-system @react-native-community/netinfo @supabase/supabase-js
+npx expo install expo-modules-core expo-file-system @react-native-community/netinfo @supabase/supabase-js
 ```
 
-The React Native module inside `kizunasync` (the `rn-uniffi` workspace) autolinks and carries the Rust engine for iOS and Android. It reaches the app through a native rebuild that links a prebuilt engine at the same version: the `KizunaSyncEngine` product of the [`kizunasync-swift`](https://github.com/kizunasync/kizunasync-swift) Swift package on iOS 16 or later, and `com.kizunasync:kizunasync-engine` from Maven Central on Android. The app needs no Rust toolchain. Expo Go cannot load the engine, so iOS and Android need a development build. `@op-engineering/op-sqlite` is an optional peer.
+The Expo Modules API 2.0 host inside `kizunasync` autolinks and carries the Rust engine for iOS and Android. A native rebuild links the engine at the same version: the `KizunaSyncFfi` product of the [`kizunasync-swift`](https://github.com/kizunasync/kizunasync-swift) Swift package on iOS 16.4 or later, and `com.kizunasync:kizunasync` from Maven Central on Android. Published artifacts must include the Turso migration; see the unreleased-source note below. Expo Go cannot load the engine, so iOS and Android need a development build. `@op-engineering/op-sqlite` remains an optional compatibility helper.
 
 ## Exports
 
@@ -40,7 +40,9 @@ const kizunasync = createSupabaseKizunaSync({ supabase, driver, config })
 
 On native, `createSupabaseKizunaSync` attaches the [UniFFI](https://mozilla.github.io/uniffi-rs/) HTTP remote, the transport the Rust engine uses to reach Supabase. `createKizunaSync` with `createRpcRemote` leaves the React Native path with no remote at all. The engine then ACKs every push without talking to your project.
 
-`openExpoDriver` returns an `IStoreLocator` right away and opens nothing. On native the locator names the `expo-sqlite` file for the Rust kernel. It opens `expo-sqlite` to read that path and closes it again on the app client's first engine call, not when you build it. If that read fails, the app client's calls fail with `ENGINE_UNAVAILABLE` and the `expo-sqlite` message from that first call on. It also carries `createExpoConnectivity()` and `createExpoForeground()` as `platformPorts`, so the app client follows NetInfo and `AppState` unless you pass your own `connectivity` or `foreground`. Its `loadNativeEngine` loads the Rust engine through `@kizunasync/rn-uniffi` on that same first call, so `@kizunasync/core` never imports that package. On web `openExpoDriver` returns the `@kizunasync/web` worker driver, which carries the browser's connectivity. It hands that driver the resolver for the engine binary's Metro asset URL, and the driver calls it when the worker spawns, so a static render never reads `location`.
+`openExpoDriver` returns an `IStoreLocator` synchronously. On native it resolves the existing `Documents/SQLite/<name>` (iOS) or `files/SQLite/<name>` (Android) path through `KizunaSyncExpo`, the Expo Modules API 2.0 host. The shared Rust Turso engine owns the connection. It also supplies NetInfo connectivity and AppState foreground ports. On web it uses the Rust worker with OPFS or IndexedDB, without COOP/COEP headers. Expo Go cannot load this native module; rebuild a development client with SDK 58.
+
+Existing SQLite databases are opened in place after a checksummed backup. See [Turso migration and recovery](../../docs/operations/turso-migration.md) before upgrading an installed application. The old `openOpSqliteDriver` name remains a compatibility path locator; the sync database is still opened by Turso.
 
 ## op-sqlite (opt-in)
 
@@ -114,11 +116,11 @@ const kizunasync = createKizunaSync(driver, remote, config, { fileStore, transfe
 
 | Package | Required | Constraint |
 |---|---|---|
-| `expo-sqlite` | Yes | `~57.0.1` |
-| `react-native` | Yes | `>=0.86.0` |
+| `expo-modules-core` | Yes | `~58.0.21` |
+| `react-native` | Yes | `>=0.86.0 <0.89.0` |
 | `@react-native-community/netinfo` | Yes | `>=11` |
-| `expo` | Yes | any |
-| `expo-file-system` | Only with `openExpoFileStore` | any |
+| `expo` | Yes | `~58.0.13` |
+| `expo-file-system` | Only with `openExpoFileStore` | `~58.0.9` |
 | `@supabase/supabase-js` | Only with `createExpoSupabaseDownload` | `^2.0.0` |
 | `@op-engineering/op-sqlite` | Only with `openOpSqliteDriver` | any (optional) |
 

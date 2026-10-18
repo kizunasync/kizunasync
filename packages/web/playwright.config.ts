@@ -1,6 +1,6 @@
 /**
  * Chromium only, and deliberately serial: every spec opens dedicated workers that
- * each instantiate the 3 MB wasm engine and take an OPFS access-handle pool.
+ * each instantiate the wasm engine and take OPFS access handles.
  * Parallel workers would measure the runner, not the engine.
  *
  * Two projects, not interchangeable. `conformance` is hermetic: a browser and the
@@ -82,6 +82,9 @@ export default defineConfig({
   use: {
     baseURL: ORIGIN,
     trace: 'retain-on-failure',
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH === undefined ? {} : {
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    },
   },
   /**
    * One output directory per project. A run of one lane must not clear the

@@ -182,26 +182,23 @@ final class KizunaSyncSchedulerTests: XCTestCase {
     XCTAssertEqual(scheduler.health().consecutiveFailures, 0)
 
     failing.set(true)
+    var wokeAt = Date()
     scheduler.wake()
     spin(0.4)
     XCTAssertEqual(scheduler.health().consecutiveFailures, 1)
-    XCTAssertEqual(
-      scheduler.health().nextAttemptAt?.timeIntervalSinceNow ?? 0,
-      4,
-      accuracy: 0.5,
+    assertArmed(
+      scheduler,
+      after: wokeAt,
+      delay: 4,
       "one failure doubles the delay before the jitter halves it"
     )
 
     failing.set(false)
+    wokeAt = Date()
     scheduler.wake()
     spin(0.4)
     XCTAssertEqual(scheduler.health().consecutiveFailures, 0)
-    XCTAssertEqual(
-      scheduler.health().nextAttemptAt?.timeIntervalSinceNow ?? 0,
-      2,
-      accuracy: 0.5,
-      "a success re-arms at the base interval"
-    )
+    assertArmed(scheduler, after: wokeAt, delay: 2, "a success re-arms at the base interval")
     scheduler.stop()
   }
 
@@ -622,6 +619,28 @@ final class KizunaSyncSchedulerTests: XCTestCase {
   /// Runs the main run loop so the scheduler's timer fires inside the test.
   private func spin(_ seconds: TimeInterval) {
     RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+  }
+
+  /// Asserts the delay the scheduler armed after the wake at `wokeAt`. The
+  /// timer is armed somewhere between that wake and now, so the delay is
+  /// measured from the wake and the time a slow runner spent before reading
+  /// the snapshot is allowed on the upper side only.
+  private func assertArmed(
+    _ scheduler: KizunaSyncScheduler,
+    after wokeAt: Date,
+    delay: TimeInterval,
+    _ message: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    guard let next = scheduler.health().nextAttemptAt else {
+      XCTFail("the scheduler is not armed: \(message)", file: file, line: line)
+      return
+    }
+    let armedDelay = next.timeIntervalSince(wokeAt)
+    let elapsed = Date().timeIntervalSince(wokeAt)
+    XCTAssertGreaterThanOrEqual(armedDelay, delay - 0.5, message, file: file, line: line)
+    XCTAssertLessThanOrEqual(armedDelay, delay + elapsed + 0.5, message, file: file, line: line)
   }
 }
 

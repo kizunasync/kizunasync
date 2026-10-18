@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Replaced the shared native and browser SQLite backends with Turso 0.8.3, with native migration snapshots, integrity checks, and imports from the previous browser OPFS/IndexedDB layouts.
+- Upgraded the Expo integration and example to SDK 58 and added a native Expo Modules API 2.0 host for the Rust engine. Native database paths remain compatible with existing installations.
+- Added the typed `KizunaSyncFfi` Swift product used by the Expo host and native Expo build gates.
+- Added Android APK checks for the freshly built engine and 16 KB alignment; local Maven overrides now cover app runtime dependencies too.
+- Updated rustls to 0.23.46 to address RUSTSEC-2026-0346 through RUSTSEC-2026-0349.
+- Updated the Expo example to Uniwind 1.12.2 to fix circular web component imports.
+
 - Showed the bare `npx kizunasync` command in the website hero and wrote the wordmark as Kizuna Sync
 - Narrowed the React Native and Expo peer ranges of `kizunasync` to the tested versions: `react-native` `>=0.86.0 <0.88.0`, and `expo`, `expo-asset`, and `expo-file-system` `~57.0.0`
 

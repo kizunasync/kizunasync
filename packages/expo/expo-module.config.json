@@ -1,0 +1,12 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["KizunaSyncExpoModule"],
+    "podspecPath": "KizunaSyncExpo.podspec"
+  },
+  "android": {
+    "path": "android",
+    "name": "kizunasync-expo",
+    "modules": []
+  }
+}

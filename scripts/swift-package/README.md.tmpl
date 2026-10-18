@@ -1,6 +1,6 @@
 # Kizuna Sync for Swift
 
-`KizunaSync` is the Swift app client for [Kizuna Sync](https://kizunasync.com): offline reads and writes on local SQLite, an outbox that syncs through your Supabase project, and typed access to the Rust engine through UniFFI.
+`KizunaSync` is the Swift app client for [Kizuna Sync](https://kizunasync.com): offline reads and writes on a local database, an outbox that syncs through your Supabase project, and typed access to the Rust engine through UniFFI.
 
 ## Install
 
@@ -24,7 +24,7 @@ import KizunaSync
 
 Platforms: iOS 16 and macOS 13 or later. The package links the prebuilt `KizunaSyncFfi` XCFramework, so the app project needs no Rust toolchain.
 
-Apps use the `KizunaSync` product. `KizunaSyncEngine` exposes only the engine binary, for the React Native module `@kizunasync/rn-uniffi`.
+Apps use the `KizunaSync` product. `KizunaSyncFfi` exposes the typed UniFFI host used by Expo Modules API 2.0. `KizunaSyncEngine` exposes only the engine binary, for the React Native module `@kizunasync/rn-uniffi`.
 
 ## What is inside
 

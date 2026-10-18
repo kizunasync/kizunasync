@@ -1,7 +1,7 @@
 use super::LocalStore;
 use crate::error::StoreError;
 use crate::types::{NewOverwrite, OverwriteRecord};
-use rusqlite::params;
+use kizunasync_db::params;
 
 const OVERWRITE_SELECT: &str = "SELECT id, table_name, pk, column_name, loser_value,
     winner_mutation_id, conflict_mode, winner_seq, at, dismissed

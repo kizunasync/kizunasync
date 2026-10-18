@@ -1,7 +1,7 @@
 use super::LocalStore;
 use crate::error::StoreError;
 use crate::types::{RejectionRecord, stored};
-use rusqlite::params;
+use kizunasync_db::params;
 
 const REJECTION_SELECT: &str = "SELECT mutation_id, table_name, pk, kind, reason,
     changed_columns, server_row, at, dismissed

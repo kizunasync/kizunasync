@@ -12,7 +12,7 @@ const ROOT = resolve(import.meta.dir, '..')
  * they consume, which CONVENTIONS forbids ("a dependency shared by multiple
  * workspaces uses the same version/range").
  */
-const WORKSPACE_BASES = ['apps', 'packages', 'examples']
+const WORKSPACE_BASES = ['apps', 'packages', 'examples', 'tools', 'crates']
 
 const INSTALL_CARGO_EDIT = 'cargo install cargo-edit --root .cargo-tools'
 

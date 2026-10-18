@@ -3,7 +3,7 @@
   <span style="margin: 0; font-size: 1.2em;">example: todo-expo</span>
 </h1>
 
-Private workspace. Expo SDK 57 with React Native 0.86.3 and React 19.2.3. The app pins react-native-reanimated 4.7.0 and react-native-worklets 0.13.0 and excludes them from `expo install --check`, because the Babel plugin of the worklets version Expo SDK 57 expects requires `@babel/generator` and `@babel/traverse` without declaring them, and under Bun's isolated linker that require reaches the repository root's Babel 8 copies. It also pins react-native-web 0.21.2, because uniwind 1.12.1's web `InputAccessoryView` hits a circular import with react-native-web 0.21.3 and the page stays blank ([uni-stack/uniwind#704](https://github.com/uni-stack/uniwind/issues/704)); the pin goes once a uniwind release carries that fix. Normal todo operations use Kizuna's local query app client; `supabase-js` supplies authentication and the Supabase adapters. The lab's `force conflict` action writes through `supabase-js` so the local client has a conflicting server value to reconcile.
+Private workspace. Expo SDK 58, React Native 0.88.0, and React 19.3.0. Native storage runs through Expo Modules API 2.0 and the shared Rust Turso engine. Dependencies follow Expo 58's published bundled-module versions. Supabase supplies authentication and transport.
 
 Routes live under `app/`. [`src/kizunasync-shim.ts`](./src/kizunasync-shim.ts) owns the database driver, Kizuna/Supabase composition, attachment ports, session-aware owner state, live-sync gates, and lab controls.
 
@@ -11,7 +11,7 @@ Routes live under `app/`. [`src/kizunasync-shim.ts`](./src/kizunasync-shim.ts) o
 
 The app calls `openExpoDriver` on every platform:
 
-- Native iOS and Android use `expo-sqlite` with a file-backed database. The Rust engine reaches it through the React Native module that `kizunasync` ships. Without that Turbo Module, `createKizunaSync` throws `ENGINE_UNAVAILABLE`
+- Native iOS and Android use the file-backed Turso engine through `KizunaSyncExpo`. A custom SDK 58 native build is required; Expo Go reports `ENGINE_UNAVAILABLE`.
 - Expo web hands the open to `kizunasync/web` (wasm worker, OPFS or relaxed IndexedDB, BroadcastChannel leadership). No SharedArrayBuffer or COOP/COEP
 - Native attachment bytes use the Expo document-directory file store; web uses the OPFS file store. Both use the Supabase transfer adapter
 - A row whose image transfer budget stopped for good shows retry and remove in place of the thumbnail

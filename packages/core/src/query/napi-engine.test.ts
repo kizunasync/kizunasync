@@ -1111,9 +1111,12 @@ describe.skipIf(!hasAddon)('the reset signal on the Rust engine', () => {
       reopened.dispose()
       database.remove()
     })
-    // The first use opens the engine, and the open reads the latched block from the checkpoint.
+    // A checkpoint read waits for opening to seed health on the local call lane.
     reopened.getSyncHealth()
-    await flushEvents()
+    expect(await reopened.getCheckpoint()).toMatchObject({
+      softBlocked: true,
+      softBlockReason: 'reset_required',
+    })
 
     expect(reopened.getSyncHealth().softBlockReason).toBe('reset_required')
   })

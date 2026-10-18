@@ -18,7 +18,7 @@
     "typescript": "~7.0.2",
     "vue-eslint-parser": "^10.4.1"
   },
-  "description": "Kizuna (絆): offline-first sync for Supabase apps, provisioned into your own Supabase. Monorepo: website, packages, protocol oracle, examples, and read-only sync inspector.",
+  "description": "Kizuna (\u7d46): offline-first sync for Supabase apps, provisioned into your own Supabase. Monorepo: website, packages, protocol oracle, examples, and read-only sync inspector.",
   "engines": {
     "bun": ">=1.3.0",
     "node": "^20.19.0 || >=22.12.0"
@@ -79,6 +79,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "tools/cargo",
+    "crates/kizunasync-napi"
   ]
 }

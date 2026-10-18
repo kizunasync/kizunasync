@@ -92,6 +92,8 @@ The script cross-compiles `kizunasync-ffi` for arm64-v8a, armeabi-v7a, and x86_6
 
 ### React Native Turbo Module
 
+Expo SDK 58 uses the Expo Modules API 2.0 host and does not require regenerating the separate Turbo Module below. To run an app against a local engine build, build matching Turso native artifacts and use the local package and Maven overrides in [Turso migration and recovery](../operations/turso-migration.md).
+
 From `packages/rn-uniffi`:
 
 ```bash
@@ -111,7 +113,7 @@ Pushing a `v<X.Y.Z>` tag drives all three release lanes. Rehearse each one local
 
 ### Swift package release
 
-`release-swift.yml` builds the XCFramework, attaches `KizunaSyncFfi.xcframework.zip` and its checksum to the GitHub Release, renders `kizunasync/kizunasync-swift` with `scripts/sync-swift-package.sh`, and tags that repository `<X.Y.Z>`. The renderer fills `scripts/swift-package/Package.swift.tmpl` and `scripts/swift-package/README.md.tmpl` with the version and checksum, and it copies the repository's `LICENSE` alongside them. The two template files in this checkout are therefore never the ones an app installs. The rendered package exports two products: `KizunaSync`, the app client, and `KizunaSyncEngine`, the XCFramework's binary target alone, which the React Native module inside `kizunasync` links.
+`release-swift.yml` builds the XCFramework, attaches `KizunaSyncFfi.xcframework.zip` and its checksum to the GitHub Release, renders `kizunasync/kizunasync-swift` with `scripts/sync-swift-package.sh`, and tags that repository `<X.Y.Z>`. The renderer fills `scripts/swift-package/Package.swift.tmpl` and `scripts/swift-package/README.md.tmpl` with the version and checksum, and it copies the repository's `LICENSE` and third-party notices alongside them. The two template files in this checkout are therefore never the ones an app installs. The rendered package exports three products: `KizunaSync`, the app client; `KizunaSyncFfi`, the typed bindings used by the Expo host; and `KizunaSyncEngine`, the XCFramework's binary target alone, which the separate React Native Turbo Module links.
 
 Render the tree locally with `bun run cargo:swift-package <dir> --version <X.Y.Z> --checksum <sha256>`, or pass `--local-xcframework crates/kizunasync-ffi/bindings/swift/KizunaSyncFfi.xcframework` to check a local build instead of a release artifact.
 

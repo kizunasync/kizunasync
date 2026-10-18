@@ -15,7 +15,7 @@ import { createConnectivityGate, createGatedWakeup, createLiveSyncGate, createQu
 /**
  * Kizuna todo config/app client: thin glue over the REAL client.
  *
- * Engine + reconciliation live in kizunasync; the expo-sqlite open lives in
+ * Engine + reconciliation live in kizunasync; the native Turso host lives in
  * kizunasync/expo (openExpoDriver); the React data wiring lives in kizunasync/react
  * hooks (app/(tabs)/(home)/index.tsx). What stays here is the example-specific
  * glue the hooks don't own: the todos defineConfig, the supabase remote binding
@@ -230,7 +230,7 @@ class ForeignClientError extends Error {
 }
 
 /**
- * openExpoDriver names the native file (then closes expo-sqlite) or returns the
+ * openExpoDriver resolves the native database path or returns the
  * web worker driver. The boot builds the client and its attachment file store
  * at module init and opens neither. A boot that throws leaves a booting
  * placeholder carrying the failure as its notice; the app awaits whenReady()
@@ -358,7 +358,7 @@ export async function forceServerConflict(): Promise<string> {
 
 function boot(): IKizunaSync {
   try {
-    // Web opens the kizunasync/web driver: the Rust engine runs in a dedicated worker over OPFS (or the relaxed IndexedDB fallback), one leading tab per database with the others proxied to it, so no cross-origin isolation and no per-tab database name are needed. Native names the expo-sqlite file and closes it.
+    // Web opens the kizunasync/web driver: the Rust engine runs in a dedicated worker over OPFS (or the relaxed IndexedDB fallback), one leading tab per database with the others proxied to it, so no cross-origin isolation and no per-tab database name are needed. Native resolves the existing database path through Expo Modules API 2.0.
     const driver = openExpoDriver(DB_NAME)
     // Real device connectivity drives auto-flush on reconnect; the edge-case lab's "go offline" toggle stays a manual override in sync() above. Attachment ports (ALL platforms): bytes live in a content-addressed sandbox and move via Supabase Storage + the confirm RPC. Native uses the documentDirectory store (openExpoFileStore); web uses an OPFS store (createWebFileStore), separate from the engine's own store. The UI renders the resolved LOCAL object URL on both.
     const fileStore = Platform.OS === 'web' ? createWebFileStore() : openExpoFileStore()
@@ -388,7 +388,8 @@ function boot(): IKizunaSync {
     })
     labControls = wireLabControls({ client: kizunasync, queryLog, remote: supabase, table: TODOS_TABLE })
     bootNotice = null
-    void writeEngineProbe(kizunasync.engine)
+    // A successful local RPC also verifies the Expo host's Turso identity check.
+    void kizunasync.getOutboxDepth().then(() => writeEngineProbe(kizunasync.engine))
 
     return kizunasync
   } catch (error) {

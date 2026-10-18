@@ -1,6 +1,6 @@
 use super::LocalStore;
 use crate::error::StoreError;
-use rusqlite::params;
+use kizunasync_db::params;
 
 impl LocalStore {
     /// Append one page body to the in-progress checkpoint's page set. One
