@@ -87,7 +87,7 @@ jobs:
           link-to-sdk: true
 
       - name: Install cargo-ndk
-        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
         with:
           tool: cargo-ndk
 
